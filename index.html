@@ -211,7 +211,7 @@
   <section id="view-bancos" class="view">
     <div class="panel">
       <h2>Disponibilidad inicial por banco</h2>
-      <p class="hint">Cargue el saldo disponible (en Bs) de cada cuenta bancaria de cada empresa. La suma de los bancos de una empresa es su "Saldo Inicial" en la Semana 1 de la proyección. Este dato también queda incluido en la exportación del histórico.</p>
+      <p class="hint">Cargue el saldo de cada banco (Provincial, Provincial CBR, Mercantil, Banesco, BVC, Venezuela) el día que quiera, por empresa — cada carga queda en el historial con su fecha y semana correspondiente, nunca se sobreescribe. El "Saldo Inicial" de la proyección usa siempre el dato más reciente de cada banco. Todo este historial se guarda en su Drive y también queda incluido en la exportación del Histórico.</p>
       <div id="bancosContainer"></div>
     </div>
   </section>
@@ -253,7 +253,7 @@
   <section id="view-tasa" class="view">
     <div class="panel">
       <h2>Tasa de cambio BCV — diaria y promedio semanal</h2>
-      <p class="hint">Cargue la tasa oficial de cada día hábil. La columna "Tasa semanal usada en la proyección" es la que realmente alimenta el resto del sistema (Bs/US$): puede escribirla a mano si aún no tiene el dato diario, y luego, cuando ya lo tenga, presione "Recalcular" para que se sobreescriba con el promedio correcto calculado a partir de las tasas diarias.</p>
+      <p class="hint">Cargue la tasa oficial de cada día hábil. La columna "Tasa semanal usada en la proyección" es la que realmente alimenta el resto del sistema (Bs/US$): puede escribirla a mano si aún no tiene el dato diario, y luego, cuando ya lo tenga, presione "Recalcular" para que se sobreescriba con el promedio correcto calculado a partir de las tasas diarias. <b>Cada tasa que guarda queda para siempre en el historial</b> (con su fecha) guardado en su Drive — nada se pierde ni se sobreescribe al cargar una nueva. <b>Nota:</b> el BCV no ofrece una fuente de datos que un navegador pueda leer automáticamente (no tiene API ni autoriza lecturas desde otras páginas), así que la carga diaria sigue siendo manual — el botón de al lado le abre la página oficial para copiar el valor rápido.</p>
       <div class="toolbar">
         <label style="font-size:12.5px;">Fecha: <input type="date" id="tcDateInput"></label>
         <label style="font-size:12.5px;">Tasa Bs/US$: <input type="number" step="0.0001" id="tcRateInput" style="width:110px;"></label>
@@ -280,6 +280,24 @@
         <span id="histIOStatus" style="font-size:12px;color:var(--text-mute);"></span>
       </div>
       <div id="historicoList"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Histórico — disponibilidad inicial por banco</h2>
+      <p class="hint">Todas las cargas de saldo por banco, de todas las empresas, con su fecha y semana. Se actualiza solo cada vez que se guarda un saldo en "Disponibilidad Inicial".</p>
+      <div class="toolbar">
+        <label style="font-size:12.5px;">Empresa:
+          <select id="filtroBancoEmpresa" style="font-size:12.5px;padding:5px 6px;border:1px solid var(--border);border-radius:4px;">
+            <option value="">Todas</option>
+          </select>
+        </label>
+        <label style="font-size:12.5px;">Banco:
+          <select id="filtroBancoNombre" style="font-size:12.5px;padding:5px 6px;border:1px solid var(--border);border-radius:4px;">
+            <option value="">Todos</option>
+          </select>
+        </label>
+      </div>
+      <div class="table-scroll"><table class="grid" id="bancoHistTable"></table></div>
     </div>
   </section>
 
@@ -482,13 +500,21 @@ let closedMap = {};   // closedMap[`${empresa}|${depto}|${week}`] = true
 let tcDiario = {};    // tcDiario[yyyy-mm-dd] = rate
 let tcSemanal = {};   // tcSemanal[weekKey] = tasa efectiva usada en toda la proyección (manual o recalculada)
 let openingBalances = {};
-let bankBalances = {}; // bankBalances[empresa] = [{banco, saldo}, ...]
+let bankHistory = {}; // bankHistory[empresa][banco][fecha 'YYYY-MM-DD'] = saldo Bs
+const BANK_LIST = ['Provincial','Provincial CBR','Mercantil','Banesco','BVC','Venezuela'];
 
 function emptyState(){
   const ob = {...OPENING_BALANCE_DEFAULT};
-  const bb = {};
-  EMPRESAS.forEach(e=>{ bb[e] = [{banco:'Banco principal', saldo: OPENING_BALANCE_DEFAULT[e]}]; });
-  return {estimates:{}, actuals:{}, closedMap:{}, tcDiario:{}, tcSemanal:{}, openingBalances:ob, bankBalances:bb};
+  const bh = {};
+  const anchorDate = isoDateStr(TODAY);
+  EMPRESAS.forEach(e=>{
+    bh[e] = {};
+    BANK_LIST.forEach(b=>{ bh[e][b] = {}; });
+    // Semilla inicial: el saldo de junio conocido se atribuye a "Provincial" como placeholder.
+    // Ajústelo en la pestaña "Disponibilidad Inicial" repartiéndolo entre los bancos reales.
+    bh[e]['Provincial'][anchorDate] = OPENING_BALANCE_DEFAULT[e];
+  });
+  return {estimates:{}, actuals:{}, closedMap:{}, tcDiario:{}, tcSemanal:{}, openingBalances:ob, bankHistory:bh};
 }
 async function loadStateFromDrive(){
   try{
@@ -500,16 +526,26 @@ async function loadStateFromDrive(){
     tcDiario = s.tcDiario||{};
     tcSemanal = s.tcSemanal||{};
     openingBalances = s.openingBalances||{...OPENING_BALANCE_DEFAULT};
-    bankBalances = s.bankBalances||{};
+    bankHistory = s.bankHistory||{};
+    // Migración desde la versión anterior (un solo saldo "actual" por banco, sin historial por fecha)
+    // o inicialización si nunca se ha guardado nada para una empresa.
+    const anchorDate = isoDateStr(TODAY);
     for(const e of EMPRESAS){
-      if(!Array.isArray(bankBalances[e]) || bankBalances[e].length===0){
-        bankBalances[e] = [{banco:'Banco principal', saldo: openingBalances[e] ?? OPENING_BALANCE_DEFAULT[e]}];
+      if(!bankHistory[e]) bankHistory[e] = {};
+      BANK_LIST.forEach(b=>{ if(!bankHistory[e][b]) bankHistory[e][b] = {}; });
+      const hasAnyEntry = BANK_LIST.some(b=>Object.keys(bankHistory[e][b]).length>0);
+      if(!hasAnyEntry && Array.isArray(s.bankBalances && s.bankBalances[e]) && s.bankBalances[e].length){
+        // formato viejo: [{banco,saldo}, ...] -> se vuelca como un único registro fechado hoy
+        const total = s.bankBalances[e].reduce((sum,x)=>sum+(Number(x.saldo)||0),0);
+        bankHistory[e]['Provincial'][anchorDate] = total;
+      } else if(!hasAnyEntry){
+        bankHistory[e]['Provincial'][anchorDate] = openingBalances[e] ?? OPENING_BALANCE_DEFAULT[e] ?? 0;
       }
     }
   }catch(e){ console.error('no se pudo leer el estado de Drive', e); }
 }
 function currentStateObj(){
-  return {estimates, actuals, closedMap, tcDiario, tcSemanal, openingBalances, bankBalances};
+  return {estimates, actuals, closedMap, tcDiario, tcSemanal, openingBalances, bankHistory};
 }
 // Guardado con "debounce": junta cambios rápidos en una sola escritura a Drive.
 function scheduleSaveToDrive(){
@@ -529,9 +565,41 @@ async function saveTC(){ scheduleSaveToDrive(); }
 async function saveTCSemanal(){ scheduleSaveToDrive(); }
 async function saveOpening(){ scheduleSaveToDrive(); }
 async function saveBankBalances(){ scheduleSaveToDrive(); }
+
+function addBankEntry(empresa, banco, fechaStr, saldo){
+  bankHistory[empresa] = bankHistory[empresa]||{};
+  bankHistory[empresa][banco] = bankHistory[empresa][banco]||{};
+  bankHistory[empresa][banco][fechaStr] = Number(saldo);
+  saveBankBalances();
+}
+function deleteBankEntry(empresa, banco, fechaStr){
+  if(bankHistory[empresa] && bankHistory[empresa][banco]) delete bankHistory[empresa][banco][fechaStr];
+  saveBankBalances();
+}
+function getLatestBankBalance(empresa, banco){
+  const hist = ((bankHistory[empresa]||{})[banco])||{};
+  const todayStr = isoDateStr(TODAY);
+  let bestDate=null, bestVal=0;
+  Object.keys(hist).forEach(d=>{
+    if(d<=todayStr && (bestDate===null || d>bestDate)){ bestDate=d; bestVal=Number(hist[d])||0; }
+  });
+  return {fecha:bestDate, saldo:bestVal};
+}
 function getOpeningBalance(empresa){
-  const list = bankBalances[empresa]||[];
-  return list.reduce((sum,b)=> sum + (Number(b.saldo)||0), 0);
+  return BANK_LIST.reduce((sum,b)=> sum + getLatestBankBalance(empresa,b).saldo, 0);
+}
+function bankHistoryRows(empresa){
+  // aplana el historial de esa empresa en filas {fecha, banco, saldo, semanaLabel}, más recientes primero
+  const rows = [];
+  BANK_LIST.forEach(b=>{
+    const hist = ((bankHistory[empresa]||{})[b])||{};
+    Object.keys(hist).forEach(fecha=>{
+      const info = isoWeekFromDateString(fecha);
+      rows.push({fecha, banco:b, saldo:Number(hist[fecha])||0, semanaLabel:`S${info.week}·${info.isoYear}`});
+    });
+  });
+  rows.sort((a,b)=> b.fecha.localeCompare(a.fecha) || a.banco.localeCompare(b.banco));
+  return rows;
 }
 let weeksCountCaptura = 82; // cubre desde la semana actual hasta finales de enero 2028
 let currentDept = 'NOMINA';
@@ -541,15 +609,28 @@ let currentCurProy = 'bs';
 let currentCurCons = 'bs';
 
 /* ================= ISO WEEK HELPERS ================= */
-function getISOWeek(date){
-  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-  const dayNum = (d.getUTCDay() + 6) % 7;
-  d.setUTCDate(d.getUTCDate() - dayNum + 3);
-  const firstThursday = new Date(Date.UTC(d.getUTCFullYear(),0,4));
+function isoWeekOfUTCAnchor(d){
+  // d ya debe ser una fecha "ancla" en medianoche UTC del día calendario deseado
+  const dd = new Date(d.getTime());
+  const dayNum = (dd.getUTCDay() + 6) % 7;
+  dd.setUTCDate(dd.getUTCDate() - dayNum + 3);
+  const firstThursday = new Date(Date.UTC(dd.getUTCFullYear(),0,4));
   const firstDayNum = (firstThursday.getUTCDay()+6)%7;
   firstThursday.setUTCDate(firstThursday.getUTCDate()-firstDayNum+3);
-  const week = 1 + Math.round((d-firstThursday)/(7*24*3600*1000));
-  return {isoYear: d.getUTCFullYear(), week};
+  const week = 1 + Math.round((dd-firstThursday)/(7*24*3600*1000));
+  return {isoYear: dd.getUTCFullYear(), week};
+}
+function getISOWeek(date){
+  // Para fechas "locales" (ej. new Date() del navegador): se toma el día calendario local
+  // y se reconstruye como ancla UTC antes de calcular la semana ISO.
+  const anchor = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  return isoWeekOfUTCAnchor(anchor);
+}
+function isoWeekFromDateString(yyyyMmDd){
+  // Para strings "YYYY-MM-DD" (ej. de un <input type=date>): se parsean los números directo,
+  // sin pasar por getters locales, para no correr riesgo de desfase de un día por huso horario.
+  const [y,m,dd] = yyyyMmDd.split('-').map(Number);
+  return isoWeekOfUTCAnchor(new Date(Date.UTC(y, m-1, dd)));
 }
 function mondayOfISOWeek(isoYear, week){
   const simple = new Date(Date.UTC(isoYear,0,1+(week-1)*7));
@@ -578,7 +659,7 @@ function generateWeeks(count){
   let d = mondayOfISOWeek(todayInfo.isoYear, todayInfo.week);
   const list = [];
   for(let i=0;i<count;i++){
-    const info = getISOWeek(d);
+    const info = isoWeekOfUTCAnchor(d);
     const start = new Date(d);
     const end = new Date(d); end.setUTCDate(end.getUTCDate()+6);
     const key = `${info.isoYear}-W${String(info.week).padStart(2,'0')}`;
@@ -670,7 +751,7 @@ document.querySelectorAll('nav.tabs button').forEach(btn=>{
     if(btn.dataset.view==='empresa') renderProyEmpresa();
     if(btn.dataset.view==='consolidado') renderConsolidado();
     if(btn.dataset.view==='tasa') renderTC();
-    if(btn.dataset.view==='historico') renderHistorico();
+    if(btn.dataset.view==='historico'){ renderHistorico(); renderBancoHistTable(); }
   });
 });
 
@@ -697,78 +778,103 @@ function renderCompanyTabsCaptura(){
     el.appendChild(b);
   });
 }
-/* ================= DISPONIBILIDAD INICIAL POR BANCO ================= */
+/* ================= DISPONIBILIDAD INICIAL POR BANCO (diaria, con historial) ================= */
 function renderBancos(){
   const container = document.getElementById('bancosContainer');
   container.innerHTML='';
   EMPRESAS.forEach(empresa=>{
     const box = document.createElement('div');
-    box.style.marginBottom='18px';
+    box.style.marginBottom='22px';
     box.style.border='1px solid var(--border)';
     box.style.borderRadius='8px';
     box.style.padding='12px 14px';
 
     const head = document.createElement('div');
     head.style.display='flex'; head.style.justifyContent='space-between'; head.style.alignItems='center'; head.style.marginBottom='8px';
-    const title = document.createElement('div');
-    title.innerHTML = `<b style="color:var(--navy);font-size:14px;">${EMPRESA_NOMBRE[empresa]}</b>`;
-    head.appendChild(title);
+    head.innerHTML = `<b style="color:var(--navy);font-size:14px;">${EMPRESA_NOMBRE[empresa]}</b>`;
     const totalSpan = document.createElement('div');
     totalSpan.style.fontWeight='700'; totalSpan.style.color='var(--navy)';
+    totalSpan.textContent = `Total actual: ${fmtBs(getOpeningBalance(empresa))} Bs`;
     head.appendChild(totalSpan);
     box.appendChild(head);
 
-    const table = document.createElement('table');
-    table.style.width='100%'; table.style.borderCollapse='collapse'; table.style.fontSize='12.5px';
-    const trh = document.createElement('tr');
-    trh.innerHTML = `<th style="text-align:left;padding:4px;border-bottom:1px solid var(--border);">Banco / Cuenta</th><th style="text-align:right;padding:4px;border-bottom:1px solid var(--border);">Saldo disponible (Bs)</th><th style="width:40px;border-bottom:1px solid var(--border);"></th>`;
-    table.appendChild(trh);
-
-    (bankBalances[empresa]||[]).forEach((row, idx)=>{
+    // --- Saldo actual por banco (el último dato cargado de cada uno) ---
+    const resumen = document.createElement('table');
+    resumen.style.width='100%'; resumen.style.borderCollapse='collapse'; resumen.style.fontSize='12.5px'; resumen.style.marginBottom='12px';
+    const trh0 = document.createElement('tr');
+    trh0.innerHTML = `<th style="text-align:left;padding:4px;border-bottom:1px solid var(--border);">Banco</th><th style="text-align:right;padding:4px;border-bottom:1px solid var(--border);">Último saldo (Bs)</th><th style="text-align:right;padding:4px;border-bottom:1px solid var(--border);">Fecha</th>`;
+    resumen.appendChild(trh0);
+    BANK_LIST.forEach(banco=>{
+      const {fecha, saldo} = getLatestBankBalance(empresa, banco);
       const tr = document.createElement('tr');
-      const tdNombre = document.createElement('td'); tdNombre.style.padding='4px';
-      const inputNombre = document.createElement('input');
-      inputNombre.type='text'; inputNombre.value=row.banco||''; inputNombre.style.width='100%';
-      inputNombre.style.border='1px solid var(--border)'; inputNombre.style.borderRadius='4px'; inputNombre.style.padding='4px 6px'; inputNombre.style.fontFamily='inherit';
-      inputNombre.addEventListener('change', ()=>{ bankBalances[empresa][idx].banco = inputNombre.value; saveBankBalances(); });
-      tdNombre.appendChild(inputNombre); tr.appendChild(tdNombre);
-
-      const tdSaldo = document.createElement('td'); tdSaldo.style.padding='4px';
-      const inputSaldo = document.createElement('input');
-      inputSaldo.type='number'; inputSaldo.step='0.01'; inputSaldo.value=row.saldo ?? 0; inputSaldo.style.width='100%'; inputSaldo.style.textAlign='right';
-      inputSaldo.style.border='1px solid var(--border)'; inputSaldo.style.borderRadius='4px'; inputSaldo.style.padding='4px 6px'; inputSaldo.style.fontFamily='inherit';
-      inputSaldo.addEventListener('change', async ()=>{
-        bankBalances[empresa][idx].saldo = Number(inputSaldo.value)||0;
-        await saveBankBalances();
-        renderBancos();
-      });
-      tdSaldo.appendChild(inputSaldo); tr.appendChild(tdSaldo);
-
-      const tdDel = document.createElement('td'); tdDel.style.textAlign='center';
-      const btnDel = document.createElement('button');
-      btnDel.textContent='✕'; btnDel.className='btn secondary small'; btnDel.style.padding='2px 8px';
-      btnDel.onclick = async ()=>{
-        bankBalances[empresa].splice(idx,1);
-        if(bankBalances[empresa].length===0) bankBalances[empresa].push({banco:'Banco principal', saldo:0});
-        await saveBankBalances();
-        renderBancos();
-      };
-      tdDel.appendChild(btnDel); tr.appendChild(tdDel);
-      table.appendChild(tr);
+      tr.innerHTML = `<td style="padding:4px;">${banco}</td><td style="padding:4px;text-align:right;">${fmtBs(saldo)}</td><td style="padding:4px;text-align:right;color:var(--text-mute);">${fecha? fmtDateShort(new Date(fecha+'T00:00:00Z')) : 'sin datos'}</td>`;
+      resumen.appendChild(tr);
     });
-    box.appendChild(table);
+    box.appendChild(resumen);
 
-    const btnAdd = document.createElement('button');
-    btnAdd.textContent='+ Agregar banco'; btnAdd.className='btn secondary small'; btnAdd.style.marginTop='8px';
-    btnAdd.onclick = async ()=>{
-      bankBalances[empresa] = bankBalances[empresa]||[];
-      bankBalances[empresa].push({banco:'', saldo:0});
-      await saveBankBalances();
+    // --- Formulario para agregar/actualizar un saldo diario ---
+    const form = document.createElement('div');
+    form.style.display='flex'; form.style.flexWrap='wrap'; form.style.gap='8px'; form.style.alignItems='center';
+    form.style.background='var(--navy-soft)'; form.style.padding='8px 10px'; form.style.borderRadius='6px'; form.style.marginBottom='10px';
+
+    const dateInput = document.createElement('input');
+    dateInput.type='date'; dateInput.value = isoDateStr(TODAY);
+    dateInput.style.fontSize='12.5px'; dateInput.style.padding='5px 6px'; dateInput.style.border='1px solid var(--border)'; dateInput.style.borderRadius='4px';
+
+    const bancoSelect = document.createElement('select');
+    bancoSelect.style.fontSize='12.5px'; bancoSelect.style.padding='5px 6px'; bancoSelect.style.border='1px solid var(--border)'; bancoSelect.style.borderRadius='4px';
+    BANK_LIST.forEach(b=>{ const opt=document.createElement('option'); opt.value=b; opt.textContent=b; bancoSelect.appendChild(opt); });
+
+    const saldoInput = document.createElement('input');
+    saldoInput.type='number'; saldoInput.step='0.01'; saldoInput.placeholder='Saldo Bs';
+    saldoInput.style.width='140px'; saldoInput.style.fontSize='12.5px'; saldoInput.style.padding='5px 6px'; saldoInput.style.border='1px solid var(--border)'; saldoInput.style.borderRadius='4px';
+
+    const semanaPreview = document.createElement('span');
+    semanaPreview.style.fontSize='11.5px'; semanaPreview.style.color='var(--text-mute)';
+    const updatePreview = ()=>{
+      if(!dateInput.value) { semanaPreview.textContent=''; return; }
+      const info = isoWeekFromDateString(dateInput.value);
+      semanaPreview.textContent = `→ Semana ${info.week}·${info.isoYear}`;
+    };
+    dateInput.addEventListener('change', updatePreview);
+    updatePreview();
+
+    const btnGuardar = document.createElement('button');
+    btnGuardar.className='btn small'; btnGuardar.textContent='Guardar saldo del día';
+    btnGuardar.onclick = ()=>{
+      if(!dateInput.value || saldoInput.value===''){ return; }
+      addBankEntry(empresa, bancoSelect.value, dateInput.value, Number(saldoInput.value));
+      saldoInput.value='';
       renderBancos();
     };
-    box.appendChild(btnAdd);
 
-    totalSpan.textContent = `Total: ${fmtBs(getOpeningBalance(empresa))} Bs`;
+    form.appendChild(dateInput); form.appendChild(bancoSelect); form.appendChild(saldoInput);
+    form.appendChild(semanaPreview); form.appendChild(btnGuardar);
+    box.appendChild(form);
+
+    // --- Historial completo (todas las fechas cargadas, todos los bancos) ---
+    const rows = bankHistoryRows(empresa);
+    const details = document.createElement('details');
+    const summary = document.createElement('summary');
+    summary.style.cursor='pointer'; summary.style.fontSize='12.5px'; summary.style.fontWeight='700'; summary.style.color='var(--navy)';
+    summary.textContent = `Ver historial completo (${rows.length} registro${rows.length===1?'':'s'})`;
+    details.appendChild(summary);
+
+    const histTable = document.createElement('table');
+    histTable.style.width='100%'; histTable.style.borderCollapse='collapse'; histTable.style.fontSize='12px'; histTable.style.marginTop='8px';
+    const trh1 = document.createElement('tr');
+    trh1.innerHTML = `<th style="text-align:left;padding:3px;border-bottom:1px solid var(--border);">Fecha</th><th style="text-align:left;padding:3px;border-bottom:1px solid var(--border);">Semana</th><th style="text-align:left;padding:3px;border-bottom:1px solid var(--border);">Banco</th><th style="text-align:right;padding:3px;border-bottom:1px solid var(--border);">Saldo (Bs)</th><th style="width:30px;border-bottom:1px solid var(--border);"></th>`;
+    histTable.appendChild(trh1);
+    rows.forEach(r=>{
+      const tr = document.createElement('tr');
+      const tdDel = `<td style="text-align:center;"><button class="btn secondary small" style="padding:1px 6px;">✕</button></td>`;
+      tr.innerHTML = `<td style="padding:3px;">${fmtDateShort(new Date(r.fecha+'T00:00:00Z'))}</td><td style="padding:3px;">${r.semanaLabel}</td><td style="padding:3px;">${r.banco}</td><td style="padding:3px;text-align:right;">${fmtBs(r.saldo)}</td>${tdDel}`;
+      tr.querySelector('button').onclick = ()=>{ deleteBankEntry(empresa, r.banco, r.fecha); renderBancos(); };
+      histTable.appendChild(tr);
+    });
+    details.appendChild(histTable);
+    box.appendChild(details);
+
     container.appendChild(box);
   });
 }
@@ -1315,10 +1421,14 @@ async function exportHistoricoExcel(){
   Object.keys(tcSemanal).sort().forEach(w=>{ if(tcSemanal[w]!==null && tcSemanal[w]!==undefined) tcsRows.push([w, tcSemanal[w]]); });
   XLSX.utils.book_append_sheet(wbOut, XLSX.utils.aoa_to_sheet(tcsRows), 'TasaSemanal');
 
-  // Hoja SaldosPorBanco (detalle) + SaldosIniciales (total por empresa, calculado)
-  const bancoRows = [['Empresa','Banco','Saldo_Bs']];
-  EMPRESAS.forEach(e=>{ (bankBalances[e]||[]).forEach(b=>{ bancoRows.push([e, b.banco||'', Number(b.saldo)||0]); }); });
-  XLSX.utils.book_append_sheet(wbOut, XLSX.utils.aoa_to_sheet(bancoRows), 'SaldosPorBanco');
+  // Hoja SaldosPorBancoHistorico (cada carga diaria) + SaldosIniciales (total actual por empresa, calculado)
+  const bancoHistRows = [['Empresa','Banco','Fecha','SemanaClave','Saldo_Bs']];
+  EMPRESAS.forEach(e=>{
+    bankHistoryRows(e).forEach(r=>{
+      bancoHistRows.push([e, r.banco, r.fecha, r.semanaLabel, r.saldo]);
+    });
+  });
+  XLSX.utils.book_append_sheet(wbOut, XLSX.utils.aoa_to_sheet(bancoHistRows), 'SaldosPorBancoHistorico');
 
   const saldoRows = [['Empresa','Saldo_Bs']];
   EMPRESAS.forEach(e=>{ saldoRows.push([e, getOpeningBalance(e)]); });
@@ -1426,22 +1536,38 @@ document.getElementById('importHistFile').addEventListener('change', async (e)=>
         counts.tasaSemanal++;
       }
     }
-    if(wbIn.SheetNames.includes('SaldosPorBanco')){
+    if(wbIn.SheetNames.includes('SaldosPorBancoHistorico')){
+      const rows = XLSX.utils.sheet_to_json(wbIn.Sheets['SaldosPorBancoHistorico'], {header:1, defval:null});
+      for(let i=1;i<rows.length;i++){
+        const [empresa,banco,fecha,,saldo] = rows[i];
+        if(!empresa||!banco||!fecha||saldo===null||saldo===undefined) continue;
+        bankHistory[empresa] = bankHistory[empresa]||{};
+        bankHistory[empresa][banco] = bankHistory[empresa][banco]||{};
+        bankHistory[empresa][banco][String(fecha).trim()] = Number(saldo);
+        counts.saldos++;
+      }
+    } else if(wbIn.SheetNames.includes('SaldosPorBanco')){
+      // formato viejo (sin fecha): se carga como un registro fechado hoy
       const rows = XLSX.utils.sheet_to_json(wbIn.Sheets['SaldosPorBanco'], {header:1, defval:null});
-      const seen = {};
+      const hoy = isoDateStr(TODAY);
       for(let i=1;i<rows.length;i++){
         const [empresa,banco,saldo] = rows[i];
         if(!empresa||saldo===null||saldo===undefined) continue;
-        if(!seen[empresa]){ bankBalances[empresa]=[]; seen[empresa]=true; }
-        bankBalances[empresa].push({banco: banco||'', saldo: Number(saldo)});
+        const bancoNombre = BANK_LIST.includes(banco)? banco : 'Provincial';
+        bankHistory[empresa] = bankHistory[empresa]||{};
+        bankHistory[empresa][bancoNombre] = bankHistory[empresa][bancoNombre]||{};
+        bankHistory[empresa][bancoNombre][hoy] = Number(saldo);
         counts.saldos++;
       }
     } else if(wbIn.SheetNames.includes('SaldosIniciales')){
       const rows = XLSX.utils.sheet_to_json(wbIn.Sheets['SaldosIniciales'], {header:1, defval:null});
+      const hoy = isoDateStr(TODAY);
       for(let i=1;i<rows.length;i++){
         const [empresa,saldo] = rows[i];
         if(!empresa||saldo===null||saldo===undefined) continue;
-        bankBalances[empresa] = [{banco:'Banco principal', saldo: Number(saldo)}];
+        bankHistory[empresa] = bankHistory[empresa]||{};
+        bankHistory[empresa]['Provincial'] = bankHistory[empresa]['Provincial']||{};
+        bankHistory[empresa]['Provincial'][hoy] = Number(saldo);
         counts.saldos++;
       }
     }
@@ -1457,6 +1583,56 @@ document.getElementById('importHistFile').addEventListener('change', async (e)=>
   }
   e.target.value='';
 });
+
+function populateBancoHistFilters(){
+  const empSel = document.getElementById('filtroBancoEmpresa');
+  const bancoSel = document.getElementById('filtroBancoNombre');
+  if(empSel.options.length<=1){
+    EMPRESAS.forEach(e=>{ const o=document.createElement('option'); o.value=e; o.textContent=EMPRESA_NOMBRE[e]; empSel.appendChild(o); });
+  }
+  if(bancoSel.options.length<=1){
+    BANK_LIST.forEach(b=>{ const o=document.createElement('option'); o.value=b; o.textContent=b; bancoSel.appendChild(o); });
+  }
+}
+function renderBancoHistTable(){
+  populateBancoHistFilters();
+  const empFiltro = document.getElementById('filtroBancoEmpresa').value;
+  const bancoFiltro = document.getElementById('filtroBancoNombre').value;
+  let rows = [];
+  EMPRESAS.forEach(e=>{
+    if(empFiltro && empFiltro!==e) return;
+    bankHistoryRows(e).forEach(r=>{ rows.push(Object.assign({empresa:e}, r)); });
+  });
+  if(bancoFiltro) rows = rows.filter(r=>r.banco===bancoFiltro);
+  rows.sort((a,b)=> b.fecha.localeCompare(a.fecha) || a.empresa.localeCompare(b.empresa) || a.banco.localeCompare(b.banco));
+
+  const table = document.getElementById('bancoHistTable');
+  table.innerHTML='';
+  const thead=document.createElement('thead'); const trh=document.createElement('tr');
+  ['Fecha','Semana','Empresa','Banco','Saldo (Bs)'].forEach(h=>{
+    const th=document.createElement('th'); th.textContent=h;
+    if(h==='Fecha') th.className='concept';
+    trh.appendChild(th);
+  });
+  thead.appendChild(trh); table.appendChild(thead);
+  const tbody=document.createElement('tbody');
+  if(!rows.length){
+    const tr=document.createElement('tr');
+    const td=document.createElement('td'); td.colSpan=5; td.className='empty-state'; td.textContent='No hay cargas registradas todavía.';
+    tr.appendChild(td); tbody.appendChild(tr);
+  }
+  rows.forEach(r=>{
+    const tr=document.createElement('tr');
+    const tdFecha=document.createElement('td'); tdFecha.className='concept'; tdFecha.textContent=fmtDateShort(new Date(r.fecha+'T00:00:00Z'));
+    tr.appendChild(tdFecha);
+    [r.semanaLabel, EMPRESA_NOMBRE[r.empresa], r.banco].forEach(v=>{ const td=document.createElement('td'); td.style.textAlign='left'; td.textContent=v; tr.appendChild(td); });
+    const tdSaldo=document.createElement('td'); tdSaldo.textContent=fmtBs(r.saldo); tr.appendChild(tdSaldo);
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+}
+document.getElementById('filtroBancoEmpresa').addEventListener('change', renderBancoHistTable);
+document.getElementById('filtroBancoNombre').addEventListener('change', renderBancoHistTable);
 
 function renderHistorico(){
   const el = document.getElementById('historicoList');
