@@ -1,0 +1,1522 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FC Semanal — Captura y Proyección</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<style>
+  :root{
+    --bg:#F3F5F8;
+    --panel:#FFFFFF;
+    --navy:#1F3A5C;
+    --navy-dark:#132A42;
+    --navy-soft:#EAF0F6;
+    --accent:#2E7D6B;
+    --accent-soft:#E3F2ED;
+    --amber:#B9812D;
+    --amber-soft:#FBF1DF;
+    --danger:#B3432B;
+    --border:#DEE3EA;
+    --text:#1E2430;
+    --text-mute:#6B7280;
+    --mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    font-size:14px;
+  }
+  header.app{
+    background:linear-gradient(135deg,var(--navy),var(--navy-dark));
+    color:#fff; padding:18px 24px; display:flex; align-items:center; justify-content:space-between;
+    flex-wrap:wrap; gap:10px;
+  }
+  header.app h1{
+    font-size:18px; margin:0; letter-spacing:.3px; font-weight:700;
+  }
+  header.app .sub{ font-size:12px; opacity:.75; margin-top:2px; letter-spacing:.4px; text-transform:uppercase;}
+  .week-badge{
+    background:rgba(255,255,255,.12); border:1px solid rgba(255,255,255,.25); border-radius:8px;
+    padding:8px 14px; font-size:13px; text-align:right;
+  }
+  .week-badge b{font-size:16px; display:block;}
+  nav.tabs{
+    display:flex; gap:2px; background:var(--navy-dark); padding:0 24px; overflow-x:auto;
+  }
+  nav.tabs button{
+    background:transparent; border:none; color:#cdd7e2; padding:12px 16px; font-size:13px;
+    cursor:pointer; border-bottom:3px solid transparent; white-space:nowrap; font-weight:600;
+    letter-spacing:.2px;
+  }
+  nav.tabs button:hover{ color:#fff; }
+  nav.tabs button.active{ color:#fff; border-bottom-color:var(--accent); }
+  main{ padding:20px 24px 60px; max-width:1500px; margin:0 auto; }
+  .view{ display:none; }
+  .view.active{ display:block; }
+  .panel{
+    background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:16px 18px;
+    margin-bottom:16px;
+  }
+  .panel h2{ font-size:15px; margin:0 0 4px; color:var(--navy); }
+  .panel .hint{ font-size:12.5px; color:var(--text-mute); margin:0 0 12px; line-height:1.5; }
+  .subtabs{ display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px; }
+  .subtabs button{
+    border:1px solid var(--border); background:#fff; color:var(--text); border-radius:20px;
+    padding:6px 14px; font-size:12.5px; cursor:pointer; font-weight:600;
+  }
+  .subtabs button.active{ background:var(--navy); color:#fff; border-color:var(--navy); }
+  .subtabs.company button.active{ background:var(--accent); border-color:var(--accent); }
+  .table-scroll{ overflow-x:auto; border:1px solid var(--border); border-radius:8px; }
+  table.grid{ border-collapse:collapse; width:100%; font-size:12.5px; }
+  table.grid th, table.grid td{ border-bottom:1px solid var(--border); border-right:1px solid var(--border); padding:6px 8px; text-align:right; white-space:nowrap; }
+  table.grid th.concept, table.grid td.concept{ text-align:left; position:sticky; left:0; background:#fff; z-index:2; min-width:220px; font-weight:500; }
+  table.grid thead th{ background:var(--navy-soft); color:var(--navy); position:sticky; top:0; z-index:3; font-weight:700; }
+  table.grid thead th.concept{ z-index:4; }
+  table.grid tr.section-row td{ background:var(--navy); color:#fff; font-weight:700; text-align:left; position:sticky; left:0; }
+  table.grid tr.subtotal-row td{ background:#F6F8FA; font-weight:700; }
+  table.grid tr.total-row td{ background:var(--navy-soft); font-weight:700; color:var(--navy); }
+  table.grid input.cell-input{
+    width:88px; border:1px solid transparent; background:transparent; text-align:right; font-size:12.5px;
+    padding:3px 4px; border-radius:4px; font-family:inherit;
+  }
+  table.grid input.cell-input:hover{ border-color:var(--border); }
+  table.grid input.cell-input:focus{ border-color:var(--navy); outline:none; background:#fff; }
+  td.week-closed{ background:var(--accent-soft); }
+  td.week-closed input{ color:var(--accent); font-weight:600; }
+  td.week-pending{ background:var(--amber-soft); }
+  th.col-open{ color:var(--navy); }
+  th.col-closed{ background:var(--accent) !important; color:#fff !important; }
+  th.month-total, td.month-total{ background:#EDEFF3; font-weight:700; }
+  .status-chip{ display:inline-block; font-size:9.5px; padding:1px 6px; border-radius:8px; margin-top:2px; font-weight:700; letter-spacing:.3px; }
+  .status-chip.open{ background:rgba(255,255,255,.25); }
+  .status-chip.closed{ background:#fff; color:var(--accent); }
+  .toolbar{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:10px; }
+  button.btn{
+    background:var(--navy); color:#fff; border:none; border-radius:6px; padding:8px 14px;
+    font-size:12.5px; font-weight:600; cursor:pointer;
+  }
+  button.btn.secondary{ background:#fff; color:var(--navy); border:1px solid var(--navy); }
+  button.btn.accent{ background:var(--accent); }
+  button.btn.small{ padding:5px 10px; font-size:11.5px; }
+  button.btn:disabled{ opacity:.4; cursor:not-allowed; }
+  .kpi-row{ display:flex; gap:12px; flex-wrap:wrap; margin-bottom:14px; }
+  .kpi{ background:#fff; border:1px solid var(--border); border-radius:8px; padding:10px 16px; min-width:150px; }
+  .kpi .lbl{ font-size:10.5px; text-transform:uppercase; letter-spacing:.5px; color:var(--text-mute); font-weight:700; }
+  .kpi .val{ font-size:18px; font-weight:700; color:var(--navy); margin-top:2px; }
+  .kpi .val.neg{ color:var(--danger); }
+  .modal-bg{ position:fixed; inset:0; background:rgba(19,42,66,.55); display:none; align-items:center; justify-content:center; z-index:50; }
+  .modal-bg.active{ display:flex; }
+  .modal{ background:#fff; border-radius:10px; padding:20px 22px; width:min(560px,92vw); max-height:86vh; overflow:auto; }
+  .modal h3{ margin:0 0 6px; color:var(--navy); font-size:16px; }
+  .modal p.hint{ font-size:12.5px; color:var(--text-mute); margin:0 0 14px; line-height:1.5; }
+  .modal label{ font-size:12px; font-weight:700; color:var(--navy); display:block; margin:10px 0 4px; }
+  .modal input[type=file], .modal textarea{ width:100%; font-size:12.5px; padding:6px; border:1px solid var(--border); border-radius:6px; font-family:inherit;}
+  .modal textarea{ height:110px; resize:vertical; }
+  .modal .modal-actions{ display:flex; justify-content:flex-end; gap:8px; margin-top:16px; }
+  .badge-inline{ font-size:10.5px; padding:2px 7px; border-radius:6px; background:var(--navy-soft); color:var(--navy); font-weight:700; margin-left:6px;}
+  .hist-item{ border:1px solid var(--border); border-radius:8px; padding:10px 14px; margin-bottom:8px; }
+  .hist-item .hr-head{ display:flex; justify-content:space-between; font-weight:700; color:var(--navy); font-size:13px; }
+  .hist-item table{ width:100%; margin-top:8px; font-size:12px; border-collapse:collapse; }
+  .hist-item th, .hist-item td{ text-align:right; padding:3px 6px; border-bottom:1px solid var(--border); }
+  .hist-item th.concept, .hist-item td.concept{ text-align:left; }
+  .empty-state{ text-align:center; padding:40px 10px; color:var(--text-mute); }
+  .diff-pos{ color:var(--accent); font-weight:700; }
+  .diff-neg{ color:var(--danger); font-weight:700; }
+  ::-webkit-scrollbar{ height:9px; width:9px;}
+  ::-webkit-scrollbar-thumb{ background:#c7cfd8; border-radius:5px; }
+  footer.app{ text-align:center; color:var(--text-mute); font-size:11px; padding:20px; }
+  @media (max-width:720px){
+    header.app{ flex-direction:column; align-items:flex-start; }
+    main{ padding:14px; }
+  }
+</style>
+</head>
+<body>
+
+<header class="app">
+  <div>
+    <h1>Flujo de Caja Semanal · Grupo de Empresas</h1>
+    <div class="sub">Captura por área · Proyección $ y Bs</div>
+  </div>
+  <div class="week-badge">
+    <span id="todayLabel">—</span>
+    <b id="currentWeekLabel">Semana —</b>
+  </div>
+</header>
+
+<nav class="tabs">
+  <button data-view="drive" class="active">Google Drive</button>
+  <button data-view="captura">Captura por Área</button>
+  <button data-view="bancos">Disponibilidad Inicial</button>
+  <button data-view="empresa">Proyección por Empresa</button>
+  <button data-view="consolidado">Consolidado</button>
+  <button data-view="tasa">Tasa de Cambio (BCV)</button>
+  <button data-view="historico">Histórico</button>
+</nav>
+
+<main>
+
+  <!-- ============ GOOGLE DRIVE ============ -->
+  <section id="view-drive" class="view active">
+    <div class="panel">
+      <h2>Conexión con Google Drive</h2>
+      <p class="hint">Configure esto una sola vez. Después de conectar, la herramienta guarda todo directamente en su Drive (no en este navegador), lee los archivos de la carpeta <b>"Capturas por área"</b> y sube el respaldo a <b>"Historico de flujo de caja"</b> automáticamente.</p>
+      <div id="driveSetup">
+        <label style="font-size:12px;font-weight:700;color:var(--navy);display:block;margin:10px 0 4px;">Google Client ID (de Google Cloud Console)</label>
+        <div class="toolbar">
+          <input type="text" id="clientIdInput" placeholder="xxxxxxxxxx-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.apps.googleusercontent.com" style="width:420px;max-width:80vw;border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:12.5px;">
+          <button class="btn small" id="btnSaveClientId">Guardar</button>
+        </div>
+        <p class="hint" style="margin-top:6px;">El Client ID no es secreto — es normal que viva en el código de la página. Solo funciona si el sitio desde donde abre esta página está autorizado en ese proyecto de Google Cloud.</p>
+      </div>
+      <div class="toolbar" style="margin-top:14px;">
+        <button class="btn accent small" id="btnDriveSignIn">Conectar con Google Drive</button>
+        <span id="driveStatus" style="font-size:12.5px;color:var(--text-mute);">No conectado.</span>
+      </div>
+      <div id="driveFoldersInfo" style="margin-top:10px;font-size:12.5px;color:var(--text-mute);"></div>
+      <div class="toolbar" style="margin-top:10px;">
+        <button class="btn secondary small" id="btnDriveSync" disabled>↻ Sincronizar ahora con Drive</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ CAPTURA ============ -->
+  <section id="view-captura" class="view">
+    <div class="panel">
+      <h2>Captura de estimados por departamento</h2>
+      <p class="hint">Cada área completa su plantilla de Excel (una por departamento, con una pestaña por empresa) y la importa aquí. El archivo se procesa completo — las 4 empresas de un solo golpe — y llena la tabla de abajo. También puede editar celdas sueltas directamente en la tabla si necesita un ajuste puntual. <b>Tip:</b> si tiene Google Drive para escritorio instalado y la carpeta "Capturas por área" sincronizada en su computador, el selector de archivo de abajo la va a mostrar como una carpeta normal — puede navegar directo ahí y elegir el archivo que le enviaron.</p>
+      <div class="subtabs" id="deptTabs"></div>
+      <div class="toolbar" id="importBar" style="background:var(--navy-soft); border-radius:8px; padding:10px 14px;">
+        <label class="btn accent small" style="cursor:pointer;">
+          Importar plantilla (.xlsx) ↑
+          <input type="file" id="importDeptFile" accept=".xlsx,.xls" style="display:none;">
+        </label>
+        <button class="btn secondary small" id="btnBuscarEnDrive">📁 Buscar en Drive ("Capturas por área")</button>
+        <span id="importStatus" style="font-size:12px;color:var(--text-mute);"></span>
+      </div>
+      <div id="drivePickerList" style="margin-bottom:10px;"></div>
+      <div class="subtabs company" id="companyTabsCaptura"></div>
+      <div class="toolbar">
+        <button class="btn secondary small" id="btnMoreWeeksCap">Cargar 10 semanas más →</button>
+        <span id="capSummary" style="font-size:12px;color:var(--text-mute);"></span>
+      </div>
+      <div class="table-scroll"><table class="grid" id="capturaTable"></table></div>
+    </div>
+  </section>
+
+  <!-- ============ DISPONIBILIDAD INICIAL POR BANCO ============ -->
+  <section id="view-bancos" class="view">
+    <div class="panel">
+      <h2>Disponibilidad inicial por banco</h2>
+      <p class="hint">Cargue el saldo disponible (en Bs) de cada cuenta bancaria de cada empresa. La suma de los bancos de una empresa es su "Saldo Inicial" en la Semana 1 de la proyección. Este dato también queda incluido en la exportación del histórico.</p>
+      <div id="bancosContainer"></div>
+    </div>
+  </section>
+
+  <!-- ============ PROYECCIÓN POR EMPRESA ============ -->
+  <section id="view-empresa" class="view">
+    <div class="panel">
+      <h2>Proyección de flujo de caja por empresa</h2>
+      <p class="hint">Calculada a partir de lo cargado en "Captura por Área" (real si la semana está cerrada, estimado si no) y de la tasa BCV promedio de cada semana.</p>
+      <div class="subtabs company" id="companyTabsProy"></div>
+      <div class="subtabs" id="currencyTabsProy">
+        <button data-cur="bs" class="active">Bolívares (Bs)</button>
+        <button data-cur="usd">Dólares (US$)</button>
+      </div>
+      <div class="kpi-row" id="kpiEmpresa"></div>
+      <div class="table-scroll"><table class="grid" id="proyEmpresaTable"></table></div>
+      <h2 style="margin-top:18px;">Resumen mensual</h2>
+      <div class="table-scroll"><table class="grid" id="proyEmpresaMonthly"></table></div>
+    </div>
+  </section>
+
+  <!-- ============ CONSOLIDADO ============ -->
+  <section id="view-consolidado" class="view">
+    <div class="panel">
+      <h2>Consolidado — 4 empresas</h2>
+      <p class="hint">Suma de CP, WF, TB y SV semana a semana.</p>
+      <div class="subtabs" id="currencyTabsCons">
+        <button data-cur="bs" class="active">Bolívares (Bs)</button>
+        <button data-cur="usd">Dólares (US$)</button>
+      </div>
+      <div class="kpi-row" id="kpiConsolidado"></div>
+      <div class="table-scroll"><table class="grid" id="consTable"></table></div>
+      <h2 style="margin-top:18px;">Resumen mensual consolidado</h2>
+      <div class="table-scroll"><table class="grid" id="consMonthly"></table></div>
+    </div>
+  </section>
+
+  <!-- ============ TASA DE CAMBIO ============ -->
+  <section id="view-tasa" class="view">
+    <div class="panel">
+      <h2>Tasa de cambio BCV — diaria y promedio semanal</h2>
+      <p class="hint">Cargue la tasa oficial de cada día hábil. La columna "Tasa semanal usada en la proyección" es la que realmente alimenta el resto del sistema (Bs/US$): puede escribirla a mano si aún no tiene el dato diario, y luego, cuando ya lo tenga, presione "Recalcular" para que se sobreescriba con el promedio correcto calculado a partir de las tasas diarias.</p>
+      <div class="toolbar">
+        <label style="font-size:12.5px;">Fecha: <input type="date" id="tcDateInput"></label>
+        <label style="font-size:12.5px;">Tasa Bs/US$: <input type="number" step="0.0001" id="tcRateInput" style="width:110px;"></label>
+        <button class="btn small" id="btnSaveRate">Guardar tasa diaria</button>
+        <button class="btn secondary small" id="btnAbrirBCV" type="button">Ver tasa oficial en bcv.org.ve ↗</button>
+        <button class="btn accent small" id="btnRecalcularTC">↻ Recalcular tasas semanales</button>
+        <span id="recalcStatus" style="font-size:12px;color:var(--text-mute);"></span>
+      </div>
+      <div class="table-scroll"><table class="grid" id="tcTable"></table></div>
+    </div>
+  </section>
+
+  <!-- ============ HISTÓRICO ============ -->
+  <section id="view-historico" class="view">
+    <div class="panel">
+      <h2>Histórico — semanas cerradas</h2>
+      <p class="hint">Aquí queda el registro de cada semana ya vencida: el estimado que se había cargado y el real que se subió, con la diferencia. Use "Exportar" para guardar todo (histórico, estimados, tasas y saldos) en un Excel de respaldo, y "Importar" la semana siguiente (o en otro computador) para continuar exactamente donde quedó. <b>Tip:</b> en Chrome o Edge, "Exportar" le va a dejar elegir la carpeta destino directamente — elija su carpeta sincronizada "Historico de flujo de caja" de Google Drive y va a quedar guardado ahí sin pasos extra.</p>
+      <div class="toolbar">
+        <button class="btn accent small" id="btnExportHist">⬇ Exportar histórico a Excel</button>
+        <label class="btn secondary small" style="cursor:pointer;">
+          ⬆ Importar histórico (Excel)
+          <input type="file" id="importHistFile" accept=".xlsx,.xls" style="display:none;">
+        </label>
+        <span id="histIOStatus" style="font-size:12px;color:var(--text-mute);"></span>
+      </div>
+      <div id="historicoList"></div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="app">Flujo de Caja Semanal · CP · WF · TB · SV — datos guardados en este enlace, compártalo solo con el equipo autorizado</footer>
+
+<!-- Modal: cerrar semana / cargar real -->
+<div class="modal-bg" id="modalBg">
+  <div class="modal">
+    <h3 id="modalTitle">Cargar reales de la semana</h3>
+    <p class="hint" id="modalHint"></p>
+    <label>Subir archivo CSV (formato: concepto,monto)</label>
+    <input type="file" id="modalFile" accept=".csv,.txt">
+    <label>...o pegue/edite manualmente (una línea por concepto: <code>concepto,monto</code>)</label>
+    <textarea id="modalTextarea"></textarea>
+    <div class="modal-actions">
+      <button class="btn secondary small" id="modalCancel">Cancelar</button>
+      <button class="btn accent small" id="modalConfirm">Guardar como real y cerrar semana</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ================= DATA MODEL ================= */
+const EMPRESAS = ['CP','WF','TB','SV'];
+const EMPRESA_NOMBRE = {CP:'CP', WF:'WF', TB:'TB', SV:'SV'};
+const DEPTS = [
+  {key:'NOMINA', label:'Nómina', sign:-1},
+  {key:'CXP', label:'Cuentas por Pagar', sign:-1},
+  {key:'CXC', label:'Cuentas por Cobrar', sign:1},
+  {key:'TESORERIA', label:'Tesorería / Banco', sign:1},
+  {key:'IMPUESTOS', label:'Impuestos', sign:-1},
+];
+const DEPT_LABEL = Object.fromEntries(DEPTS.map(d=>[d.key,d.label]));
+const DEPT_SIGN = Object.fromEntries(DEPTS.map(d=>[d.key,d.sign]));
+
+const NOMINA_FULL = ['NÓMINA ADMINISTRATIVA','NÓMINA PLATA','CT ADMINISTRATIVO','NÓMINA OPERATIVO',
+  'REEMBOLSO VIATICOS ADMINISTRATIVO','BONO ESPORADICO NO SALARIAL','PRÉSTAMOS EMPLEADOS','COMISIONES',
+  'BONO VACACIONAL','LIQUIDACIONES','PATRIMONIAL / HCM','UTILIDADES ADMINISTRATIVAS','UTILIDADES OPERATIVAS',
+  'DESTAJO / EVENTUAL','IVSS','INCES','LPH','CT OPERATIVOS','INCENTIVOS','MOVILIZACIÓN OPERATIVA (asig. extra)','GASTOS VARIOS'];
+const CXP_FULL = ['PROVEEDORES','ELECTRICIDAD','MATERIALES (POP)','UNIFORMES (OPERATIVO)','BOTAS - UNIFORME','OTROS GASTOS','VIATICOS AL MES'];
+const IMPUESTOS_CP = ['RETENCIONES DE ISLR','IVA','IVA PROVEEDORES','ANTICIPO ISLR','DPP','IGTF','PATENTES','FONACIT','OTROS IMPUESTOS','PROVISIONES'];
+const IMPUESTOS_STD = ['RETENCIONES DE ISLR','IVA','IVA PROVEEDORES','ANTICIPO ISLR','DPP','PATENTE','FONACIT','OTROS IMPUESTOS','PROVISIONES'];
+const TESORERIA_CP = ['TRASPASOS INGRESOS','REINTEGROS REGIONES','TRASPASOS EGRESOS','IGTF','COMISION','GANANCIA CAMBIARIA','AHORROS (DIVISAS-BOLIVARES)','RETIRO DE DIVISAS','APARTADO TRIMESTRAL','COMPRAS VARIAS'];
+const TESORERIA_WF = ['TRASPASOS INGRESOS','TRASPASOS EGRESOS','REINTEGROS','IGTF','COMISION','GANANCIA CAMBIARIA','AHORRO EN DIVISAS','RETIRO DE DIVISAS','APARTADO TRIMESTRAL','COMPRAS VARIAS'];
+const TESORERIA_TB = ['TRASPASOS INGRESOS','TRASPASOS EGRESOS','REINTEGROS','IGTF','COMISION','GANANCIA CAMBIARIA','AHORRO EN DIVISAS','VENTA DE DIVISAS'];
+const TESORERIA_SV = ['TRASPASOS INGRESOS','TRASPASOS EGRESOS','IGTF','COMISION','GANANCIA CAMBIARIA','AHORRO EN DIVISAS','VENTA DE DIVISAS'];
+
+const CONCEPTS = {
+  CP: {
+    NOMINA: NOMINA_FULL, CXP: CXP_FULL, IMPUESTOS: IMPUESTOS_CP, TESORERIA: TESORERIA_CP,
+    CXC: ['P&G-POLAR','POLAR','LAS LLAVES','NESTLE','DISTRILAB','NATULAC','PAVECA','DERIVADOS ELECTRONICOS-RETCA',
+          'GREEN PINE','INVERSIONES RDG','DISMARKET','LABORATORIOS ELMOR','FUNDICION PACIFICO','TODOTICKET',
+          "L' PRADO",'CENTRAL MADEIRENSE','MULTI BRANDS','SANTA TERESA','SANTONI']
+  },
+  WF: {
+    NOMINA: NOMINA_FULL, CXP: CXP_FULL, IMPUESTOS: IMPUESTOS_STD, TESORERIA: TESORERIA_WF,
+    CXC: ['SINDONI','PUIG','DIVAR','LA GIRALDA','CASA OLIVEIRA','LOREAL (BEAUTY STATION)','MONACA','ARICHUNA',
+          'MEGALABS','ALLEGRI','LABORATORIOS FARMA','MIMESA']
+  },
+  TB: {
+    NOMINA: NOMINA_FULL, CXP: CXP_FULL, IMPUESTOS: IMPUESTOS_STD, TESORERIA: TESORERIA_TB,
+    CXC: ['CHOCOLATES KRON','CAPRI','SAN DOMINGO','HERMO','ARROCERA 4 DE MAYO','REGIONAL']
+  },
+  SV: {
+    NOMINA: ['NÓMINA ADMINISTRATIVA','NÓMINA PLATA','CT ADMINISTRATIVO','PRÉSTAMOS EMPLEADOS','COMISIONES',
+             'BONO VACACIONAL','LIQUIDACIONES','PATRIMONIAL / HCM','UTILIDADES ADMINISTRATIVAS','DESTAJO / EVENTUAL',
+             'IVSS','INCES','LPH','GASTOS VARIOS'],
+    CXP: ['PROVEEDORES','GASTOS VARIOS (NUEVA OFICINA)','MOBILIARIO'],
+    IMPUESTOS: IMPUESTOS_STD,
+    TESORERIA: TESORERIA_SV,
+    CXC: ['ARS PUBLICIDAD VENEZUELA']
+  }
+};
+
+const OPENING_BALANCE_DEFAULT = {CP:97773973.41, WF:13869037.72, TB:12810595.02, SV:178752.16};
+
+/* ================= GOOGLE DRIVE: AUTH ================= */
+const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive';
+const CARPETA_CAPTURAS = 'Capturas por área';
+const CARPETA_HISTORICO = 'Historico de flujo de caja';
+const CARPETA_DATOS = 'FC Semanal - Datos (no borrar)';
+const ARCHIVO_ESTADO = 'fc_semanal_estado.json';
+
+let tokenClient = null;
+let accessToken = null;
+let driveReady = false;
+let folderIds = {capturas:null, historico:null, datos:null};
+let stateFileId = null;
+let saveTimer = null;
+
+function driveHeaders(extra){ return Object.assign({Authorization:`Bearer ${accessToken}`}, extra||{}); }
+
+async function driveFindByName(name, isFolder){
+  const mimeQ = isFolder? " and mimeType='application/vnd.google-apps.folder'" : '';
+  const q = encodeURIComponent(`name='${name.replace(/'/g,"\\'")}'${mimeQ} and trashed=false`);
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,modifiedTime)&spaces=drive`, {headers:driveHeaders()});
+  const data = await res.json();
+  return (data.files && data.files[0]) || null;
+}
+async function driveCreateFolder(name){
+  const res = await fetch('https://www.googleapis.com/drive/v3/files', {
+    method:'POST', headers:driveHeaders({'Content-Type':'application/json'}),
+    body: JSON.stringify({name, mimeType:'application/vnd.google-apps.folder'})
+  });
+  return await res.json();
+}
+async function driveGetOrCreateFolder(name){
+  let f = await driveFindByName(name, true);
+  if(!f) f = await driveCreateFolder(name);
+  return f;
+}
+async function driveListFilesInFolder(folderId){
+  const q = encodeURIComponent(`'${folderId}' in parents and trashed=false`);
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,modifiedTime)&orderBy=modifiedTime desc`, {headers:driveHeaders()});
+  const data = await res.json();
+  return data.files||[];
+}
+async function driveDownloadBytes(fileId){
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {headers:driveHeaders()});
+  return await res.arrayBuffer();
+}
+async function driveDownloadText(fileId){
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {headers:driveHeaders()});
+  return await res.text();
+}
+async function driveCreateFileMultipart(folderId, filename, blob, mimeType){
+  const metadata = {name:filename, parents:[folderId]};
+  const form = new FormData();
+  form.append('metadata', new Blob([JSON.stringify(metadata)], {type:'application/json'}));
+  form.append('file', blob);
+  const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+    method:'POST', headers:driveHeaders(), body: form
+  });
+  return await res.json();
+}
+async function driveUpdateFileContent(fileId, obj){
+  await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
+    method:'PATCH', headers:driveHeaders({'Content-Type':'application/json'}), body: JSON.stringify(obj)
+  });
+}
+
+function initGoogleAuth(clientId){
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: clientId,
+    scope: DRIVE_SCOPE,
+    callback: async (resp)=>{
+      if(resp.error){ document.getElementById('driveStatus').textContent = 'Error al conectar: '+resp.error; return; }
+      accessToken = resp.access_token;
+      await onDriveConnected();
+    }
+  });
+}
+async function onDriveConnected(){
+  document.getElementById('driveStatus').textContent = 'Conectado. Preparando carpetas...';
+  const capturas = await driveGetOrCreateFolder(CARPETA_CAPTURAS);
+  const historico = await driveGetOrCreateFolder(CARPETA_HISTORICO);
+  const datos = await driveGetOrCreateFolder(CARPETA_DATOS);
+  folderIds = {capturas: capturas.id, historico: historico.id, datos: datos.id};
+  let stateFile = await driveFindByName(ARCHIVO_ESTADO, false);
+  if(!stateFile){
+    const initial = emptyState();
+    stateFile = await driveCreateFileMultipart(datos.id, ARCHIVO_ESTADO, new Blob([JSON.stringify(initial)],{type:'application/json'}), 'application/json');
+    Object.assign({}, initial);
+  }
+  stateFileId = stateFile.id;
+  await loadStateFromDrive();
+  driveReady = true;
+  document.getElementById('driveStatus').textContent = '✓ Conectado y sincronizado con Google Drive.';
+  document.getElementById('btnDriveSync').disabled = false;
+  document.getElementById('driveFoldersInfo').innerHTML =
+    `Carpetas listas: <b>${CARPETA_CAPTURAS}</b>, <b>${CARPETA_HISTORICO}</b> y <b>${CARPETA_DATOS}</b> (datos internos de la app — no borrar).`;
+  renderDeptTabs(); renderCompanyTabsCaptura(); renderCapturaTable(); renderBancos();
+}
+document.getElementById('btnDriveSignIn').addEventListener('click', ()=>{
+  const clientId = localStorage.getItem('fc_client_id');
+  if(!clientId){ alert('Primero pegue y guarde su Google Client ID.'); return; }
+  if(!tokenClient) initGoogleAuth(clientId);
+  tokenClient.requestAccessToken();
+});
+document.getElementById('btnSaveClientId').addEventListener('click', ()=>{
+  const v = document.getElementById('clientIdInput').value.trim();
+  if(!v){ return; }
+  localStorage.setItem('fc_client_id', v);
+  initGoogleAuth(v);
+  document.getElementById('driveStatus').textContent = 'Client ID guardado. Presione "Conectar con Google Drive".';
+});
+document.getElementById('btnDriveSync').addEventListener('click', async ()=>{
+  if(!driveReady) return;
+  await loadStateFromDrive();
+  renderDeptTabs(); renderCompanyTabsCaptura(); renderCapturaTable(); renderBancos();
+  document.getElementById('driveStatus').textContent = '✓ Sincronizado con Drive ('+new Date().toLocaleTimeString('es-VE')+').';
+});
+
+/* ================= STATE ================= */
+let estimates = {};   // estimates[empresa][depto][concepto][weekKey] = number
+let actuals = {};     // same shape, only closed weeks
+let closedMap = {};   // closedMap[`${empresa}|${depto}|${week}`] = true
+let tcDiario = {};    // tcDiario[yyyy-mm-dd] = rate
+let tcSemanal = {};   // tcSemanal[weekKey] = tasa efectiva usada en toda la proyección (manual o recalculada)
+let openingBalances = {};
+let bankBalances = {}; // bankBalances[empresa] = [{banco, saldo}, ...]
+
+function emptyState(){
+  const ob = {...OPENING_BALANCE_DEFAULT};
+  const bb = {};
+  EMPRESAS.forEach(e=>{ bb[e] = [{banco:'Banco principal', saldo: OPENING_BALANCE_DEFAULT[e]}]; });
+  return {estimates:{}, actuals:{}, closedMap:{}, tcDiario:{}, tcSemanal:{}, openingBalances:ob, bankBalances:bb};
+}
+async function loadStateFromDrive(){
+  try{
+    const text = await driveDownloadText(stateFileId);
+    const s = JSON.parse(text||'{}');
+    estimates = s.estimates||{};
+    actuals = s.actuals||{};
+    closedMap = s.closedMap||{};
+    tcDiario = s.tcDiario||{};
+    tcSemanal = s.tcSemanal||{};
+    openingBalances = s.openingBalances||{...OPENING_BALANCE_DEFAULT};
+    bankBalances = s.bankBalances||{};
+    for(const e of EMPRESAS){
+      if(!Array.isArray(bankBalances[e]) || bankBalances[e].length===0){
+        bankBalances[e] = [{banco:'Banco principal', saldo: openingBalances[e] ?? OPENING_BALANCE_DEFAULT[e]}];
+      }
+    }
+  }catch(e){ console.error('no se pudo leer el estado de Drive', e); }
+}
+function currentStateObj(){
+  return {estimates, actuals, closedMap, tcDiario, tcSemanal, openingBalances, bankBalances};
+}
+// Guardado con "debounce": junta cambios rápidos en una sola escritura a Drive.
+function scheduleSaveToDrive(){
+  if(!driveReady) return; // sin conexión todavía no hay dónde guardar
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(async ()=>{
+    try{ await driveUpdateFileContent(stateFileId, currentStateObj()); }
+    catch(e){ console.error('fallo al guardar en Drive', e); }
+  }, 900);
+}
+// Estas funciones se mantienen con los mismos nombres que usa el resto del código;
+// ahora todas apuntan al mismo guardado combinado hacia Drive.
+async function saveEstimates(){ scheduleSaveToDrive(); }
+async function saveActuals(){ scheduleSaveToDrive(); }
+async function saveClosedMap(){ scheduleSaveToDrive(); }
+async function saveTC(){ scheduleSaveToDrive(); }
+async function saveTCSemanal(){ scheduleSaveToDrive(); }
+async function saveOpening(){ scheduleSaveToDrive(); }
+async function saveBankBalances(){ scheduleSaveToDrive(); }
+function getOpeningBalance(empresa){
+  const list = bankBalances[empresa]||[];
+  return list.reduce((sum,b)=> sum + (Number(b.saldo)||0), 0);
+}
+let weeksCountCaptura = 82; // cubre desde la semana actual hasta finales de enero 2028
+let currentDept = 'NOMINA';
+let currentCompanyCap = 'CP';
+let currentCompanyProy = 'CP';
+let currentCurProy = 'bs';
+let currentCurCons = 'bs';
+
+/* ================= ISO WEEK HELPERS ================= */
+function getISOWeek(date){
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNum = (d.getUTCDay() + 6) % 7;
+  d.setUTCDate(d.getUTCDate() - dayNum + 3);
+  const firstThursday = new Date(Date.UTC(d.getUTCFullYear(),0,4));
+  const firstDayNum = (firstThursday.getUTCDay()+6)%7;
+  firstThursday.setUTCDate(firstThursday.getUTCDate()-firstDayNum+3);
+  const week = 1 + Math.round((d-firstThursday)/(7*24*3600*1000));
+  return {isoYear: d.getUTCFullYear(), week};
+}
+function mondayOfISOWeek(isoYear, week){
+  const simple = new Date(Date.UTC(isoYear,0,1+(week-1)*7));
+  const dow = simple.getUTCDay() || 7;
+  simple.setUTCDate(simple.getUTCDate() + (1-dow));
+  return simple;
+}
+function fmtDateShort(d){
+  return d.toLocaleDateString('es-VE',{day:'2-digit',month:'2-digit',timeZone:'UTC'});
+}
+function fmtDateLong(d){
+  return d.toLocaleDateString('es-VE',{day:'2-digit',month:'long',year:'numeric',timeZone:'UTC'});
+}
+function isoDateStr(d){
+  return d.toISOString().slice(0,10);
+}
+function monthNameEs(d){
+  return d.toLocaleDateString('es-VE',{month:'long',timeZone:'UTC'}).replace(/^./,c=>c.toUpperCase());
+}
+
+let TODAY = new Date();
+let todayInfo = getISOWeek(TODAY);
+let CURRENT_WEEK_KEY = `${todayInfo.isoYear}-W${String(todayInfo.week).padStart(2,'0')}`;
+
+function generateWeeks(count){
+  let d = mondayOfISOWeek(todayInfo.isoYear, todayInfo.week);
+  const list = [];
+  for(let i=0;i<count;i++){
+    const info = getISOWeek(d);
+    const start = new Date(d);
+    const end = new Date(d); end.setUTCDate(end.getUTCDate()+6);
+    const key = `${info.isoYear}-W${String(info.week).padStart(2,'0')}`;
+    list.push({key, isoYear: info.isoYear, week: info.week, start, end, monthLabel: monthNameEs(start)+' '+start.getUTCFullYear()});
+    d = new Date(d); d.setUTCDate(d.getUTCDate()+7);
+  }
+  return list;
+}
+function isWeekClosed_global(weekObj){ return weekObj.end < stripTime(TODAY); }
+function stripTime(d){ const x=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate())); return x; }
+
+/* ================= STORAGE (ver bloque de Google Drive más arriba) ================= */
+
+function getEstimate(empresa,depto,concepto,weekKey){
+  return (((estimates[empresa]||{})[depto]||{})[concepto]||{})[weekKey] ?? null;
+}
+function setEstimate(empresa,depto,concepto,weekKey,val){
+  estimates[empresa] = estimates[empresa]||{};
+  estimates[empresa][depto] = estimates[empresa][depto]||{};
+  estimates[empresa][depto][concepto] = estimates[empresa][depto][concepto]||{};
+  estimates[empresa][depto][concepto][weekKey] = val;
+}
+function getActual(empresa,depto,concepto,weekKey){
+  return (((actuals[empresa]||{})[depto]||{})[concepto]||{})[weekKey] ?? null;
+}
+function setActual(empresa,depto,concepto,weekKey,val){
+  actuals[empresa] = actuals[empresa]||{};
+  actuals[empresa][depto] = actuals[empresa][depto]||{};
+  actuals[empresa][depto][concepto] = actuals[empresa][depto][concepto]||{};
+  actuals[empresa][depto][concepto][weekKey] = val;
+}
+function isClosed(empresa,depto,weekKey){ return !!closedMap[`${empresa}|${depto}|${weekKey}`]; }
+function setClosed(empresa,depto,weekKey,val){ closedMap[`${empresa}|${depto}|${weekKey}`] = val; }
+
+function valueForWeek(empresa,depto,concepto,weekKey){
+  if(isClosed(empresa,depto,weekKey)){
+    const a = getActual(empresa,depto,concepto,weekKey);
+    return a!==null? a : (getEstimate(empresa,depto,concepto,weekKey)||0);
+  }
+  return getEstimate(empresa,depto,concepto,weekKey)||0;
+}
+
+/* ================= TC HELPERS ================= */
+function weekAvgRate(weekObj){
+  let sum=0,n=0;
+  const d = new Date(weekObj.start);
+  for(let i=0;i<7;i++){
+    const key = isoDateStr(d);
+    if(tcDiario[key]!==undefined && tcDiario[key]!==null && tcDiario[key]!==''){ sum+=Number(tcDiario[key]); n++; }
+    d.setUTCDate(d.getUTCDate()+1);
+  }
+  return n>0? sum/n : null;
+}
+function monthAvgRate(weeksInMonth){
+  const rates = weeksInMonth.map(weekAvgRate).filter(r=>r!==null);
+  if(!rates.length) return null;
+  return rates.reduce((a,b)=>a+b,0)/rates.length;
+}
+// Tasa efectiva usada en toda la proyección: la que está guardada en tcSemanal
+// (manual, o la última vez que se recalculó desde las tasas diarias).
+function getEffectiveRate(weekKey){
+  const v = tcSemanal[weekKey];
+  if(v===undefined || v===null || v==='') return null;
+  const n = Number(v);
+  return isNaN(n)? null : n;
+}
+function recalcularTasasSemanales(){
+  const weeks = generateWeeks(weeksCountCaptura);
+  let actualizadas=0, sinDatoDiario=0;
+  weeks.forEach(w=>{
+    const daily = weekAvgRate(w);
+    if(daily!==null){ tcSemanal[w.key]=daily; actualizadas++; }
+    else if(getEffectiveRate(w.key)===null){ sinDatoDiario++; }
+  });
+  saveTCSemanal();
+  return {actualizadas, sinDatoDiario, total:weeks.length};
+}
+function fmtBs(n){ if(n===null||n===undefined||isNaN(n)) return '—'; return n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function fmtUsd(n){ if(n===null||n===undefined||isNaN(n)) return '—'; return n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+
+/* ================= NAV ================= */
+document.querySelectorAll('nav.tabs button').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+    document.getElementById('view-'+btn.dataset.view).classList.add('active');
+    if(btn.dataset.view==='bancos') renderBancos();
+    if(btn.dataset.view==='empresa') renderProyEmpresa();
+    if(btn.dataset.view==='consolidado') renderConsolidado();
+    if(btn.dataset.view==='tasa') renderTC();
+    if(btn.dataset.view==='historico') renderHistorico();
+  });
+});
+
+/* ================= CAPTURA VIEW ================= */
+function renderDeptTabs(){
+  const el = document.getElementById('deptTabs');
+  el.innerHTML='';
+  DEPTS.forEach(d=>{
+    const b=document.createElement('button');
+    b.textContent=d.label;
+    if(d.key===currentDept) b.classList.add('active');
+    b.onclick=()=>{ currentDept=d.key; renderDeptTabs(); renderCapturaTable(); document.getElementById('importStatus').textContent=''; };
+    el.appendChild(b);
+  });
+}
+function renderCompanyTabsCaptura(){
+  const el = document.getElementById('companyTabsCaptura');
+  el.innerHTML='';
+  EMPRESAS.forEach(e=>{
+    const b=document.createElement('button');
+    b.textContent=EMPRESA_NOMBRE[e];
+    if(e===currentCompanyCap) b.classList.add('active');
+    b.onclick=()=>{ currentCompanyCap=e; renderCompanyTabsCaptura(); renderCapturaTable(); };
+    el.appendChild(b);
+  });
+}
+/* ================= DISPONIBILIDAD INICIAL POR BANCO ================= */
+function renderBancos(){
+  const container = document.getElementById('bancosContainer');
+  container.innerHTML='';
+  EMPRESAS.forEach(empresa=>{
+    const box = document.createElement('div');
+    box.style.marginBottom='18px';
+    box.style.border='1px solid var(--border)';
+    box.style.borderRadius='8px';
+    box.style.padding='12px 14px';
+
+    const head = document.createElement('div');
+    head.style.display='flex'; head.style.justifyContent='space-between'; head.style.alignItems='center'; head.style.marginBottom='8px';
+    const title = document.createElement('div');
+    title.innerHTML = `<b style="color:var(--navy);font-size:14px;">${EMPRESA_NOMBRE[empresa]}</b>`;
+    head.appendChild(title);
+    const totalSpan = document.createElement('div');
+    totalSpan.style.fontWeight='700'; totalSpan.style.color='var(--navy)';
+    head.appendChild(totalSpan);
+    box.appendChild(head);
+
+    const table = document.createElement('table');
+    table.style.width='100%'; table.style.borderCollapse='collapse'; table.style.fontSize='12.5px';
+    const trh = document.createElement('tr');
+    trh.innerHTML = `<th style="text-align:left;padding:4px;border-bottom:1px solid var(--border);">Banco / Cuenta</th><th style="text-align:right;padding:4px;border-bottom:1px solid var(--border);">Saldo disponible (Bs)</th><th style="width:40px;border-bottom:1px solid var(--border);"></th>`;
+    table.appendChild(trh);
+
+    (bankBalances[empresa]||[]).forEach((row, idx)=>{
+      const tr = document.createElement('tr');
+      const tdNombre = document.createElement('td'); tdNombre.style.padding='4px';
+      const inputNombre = document.createElement('input');
+      inputNombre.type='text'; inputNombre.value=row.banco||''; inputNombre.style.width='100%';
+      inputNombre.style.border='1px solid var(--border)'; inputNombre.style.borderRadius='4px'; inputNombre.style.padding='4px 6px'; inputNombre.style.fontFamily='inherit';
+      inputNombre.addEventListener('change', ()=>{ bankBalances[empresa][idx].banco = inputNombre.value; saveBankBalances(); });
+      tdNombre.appendChild(inputNombre); tr.appendChild(tdNombre);
+
+      const tdSaldo = document.createElement('td'); tdSaldo.style.padding='4px';
+      const inputSaldo = document.createElement('input');
+      inputSaldo.type='number'; inputSaldo.step='0.01'; inputSaldo.value=row.saldo ?? 0; inputSaldo.style.width='100%'; inputSaldo.style.textAlign='right';
+      inputSaldo.style.border='1px solid var(--border)'; inputSaldo.style.borderRadius='4px'; inputSaldo.style.padding='4px 6px'; inputSaldo.style.fontFamily='inherit';
+      inputSaldo.addEventListener('change', async ()=>{
+        bankBalances[empresa][idx].saldo = Number(inputSaldo.value)||0;
+        await saveBankBalances();
+        renderBancos();
+      });
+      tdSaldo.appendChild(inputSaldo); tr.appendChild(tdSaldo);
+
+      const tdDel = document.createElement('td'); tdDel.style.textAlign='center';
+      const btnDel = document.createElement('button');
+      btnDel.textContent='✕'; btnDel.className='btn secondary small'; btnDel.style.padding='2px 8px';
+      btnDel.onclick = async ()=>{
+        bankBalances[empresa].splice(idx,1);
+        if(bankBalances[empresa].length===0) bankBalances[empresa].push({banco:'Banco principal', saldo:0});
+        await saveBankBalances();
+        renderBancos();
+      };
+      tdDel.appendChild(btnDel); tr.appendChild(tdDel);
+      table.appendChild(tr);
+    });
+    box.appendChild(table);
+
+    const btnAdd = document.createElement('button');
+    btnAdd.textContent='+ Agregar banco'; btnAdd.className='btn secondary small'; btnAdd.style.marginTop='8px';
+    btnAdd.onclick = async ()=>{
+      bankBalances[empresa] = bankBalances[empresa]||[];
+      bankBalances[empresa].push({banco:'', saldo:0});
+      await saveBankBalances();
+      renderBancos();
+    };
+    box.appendChild(btnAdd);
+
+    totalSpan.textContent = `Total: ${fmtBs(getOpeningBalance(empresa))} Bs`;
+    container.appendChild(box);
+  });
+}
+
+function renderCapturaTable(){
+  const weeks = generateWeeks(weeksCountCaptura);
+  const conceptos = CONCEPTS[currentCompanyCap][currentDept] || [];
+  const table = document.getElementById('capturaTable');
+  table.innerHTML='';
+  const thead = document.createElement('thead');
+  const trh = document.createElement('tr');
+  const thC = document.createElement('th'); thC.className='concept'; thC.textContent='Concepto (Bs)'; trh.appendChild(thC);
+  weeks.forEach(w=>{
+    const closed = isWeekClosed_global(w);
+    const th = document.createElement('th');
+    th.className = closed? 'col-closed':'col-open';
+    const isClosedForThis = isClosed(currentCompanyCap,currentDept,w.key);
+    th.innerHTML = `S${w.week}·${w.isoYear}<br><span style="font-weight:400;font-size:10px;">${fmtDateShort(w.start)}–${fmtDateShort(w.end)}</span>` +
+      (closed? `<br><span class="status-chip ${isClosedForThis?'closed':'open'}">${isClosedForThis?'REAL':'VENCIDA'}</span>`:'');
+    trh.appendChild(th);
+    if(closed && !isClosedForThis){
+      th.style.cursor='pointer';
+      th.title='Cargar real y cerrar esta semana';
+      th.onclick=()=>openCloseModal(currentCompanyCap,currentDept,w);
+    }
+  });
+  thead.appendChild(trh);
+  table.appendChild(thead);
+  const tbody = document.createElement('tbody');
+  conceptos.forEach(c=>{
+    const tr = document.createElement('tr');
+    const tdc = document.createElement('td'); tdc.className='concept'; tdc.textContent=c; tr.appendChild(tdc);
+    weeks.forEach(w=>{
+      const td = document.createElement('td');
+      const closed = isWeekClosed_global(w);
+      const isClosedForThis = isClosed(currentCompanyCap,currentDept,w.key);
+      if(closed) td.className = isClosedForThis? 'week-closed':'week-pending';
+      const input = document.createElement('input');
+      input.className='cell-input'; input.type='number'; input.step='0.01';
+      if(isClosedForThis){
+        input.value = getActual(currentCompanyCap,currentDept,c,w.key) ?? '';
+        input.disabled = true;
+      } else {
+        input.value = getEstimate(currentCompanyCap,currentDept,c,w.key) ?? '';
+        input.addEventListener('change', ()=>{
+          const v = input.value===''? null : Number(input.value);
+          setEstimate(currentCompanyCap,currentDept,c,w.key,v);
+          saveEstimates();
+        });
+      }
+      td.appendChild(input);
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  document.getElementById('capSummary').textContent = `${conceptos.length} conceptos · ${weeks.length} semanas mostradas (desde S${weeks[0].week})`;
+}
+document.getElementById('btnMoreWeeksCap').onclick = ()=>{ weeksCountCaptura+=10; renderCapturaTable(); };
+
+/* ================= IMPORTAR PLANTILLA (.xlsx) ================= */
+function normConcept(s){ return String(s||'').trim().toUpperCase().replace(/\s+/g,' '); }
+
+// Núcleo de la importación: recibe los bytes del .xlsx (venga de disco o de Drive) y los aplica.
+async function importDeptWorkbookBytes(arrayBuffer, statusEl){
+  const wb = XLSX.read(arrayBuffer, {type:'array'});
+  let totalCells=0, totalConceptsMatched=0, empresasEncontradas=[];
+  for(const empresa of EMPRESAS){
+    if(!wb.SheetNames.includes(empresa)) continue;
+    empresasEncontradas.push(empresa);
+    const sheet = wb.Sheets[empresa];
+    const aoa = XLSX.utils.sheet_to_json(sheet, {header:1, defval:null, raw:true});
+    const weekRow = aoa[3] || [];               // fila 4 (índice 3) = clave_semana
+    const conceptos = CONCEPTS[empresa][currentDept] || [];
+    const conceptIndex = {}; conceptos.forEach(c=>conceptIndex[normConcept(c)]=c);
+    for(let r=5; r<aoa.length; r++){             // desde fila 6 (índice 5)
+      const row = aoa[r];
+      if(!row || row[0]===null || row[0]===undefined || String(row[0]).trim()==='') continue;
+      const match = conceptIndex[normConcept(row[0])];
+      if(!match) continue;
+      totalConceptsMatched++;
+      for(let c=1;c<row.length;c++){
+        const weekKey = weekRow[c];
+        if(!weekKey) continue;
+        const val = row[c];
+        if(val===null || val==='' || isNaN(Number(val))) continue;
+        setEstimate(empresa, currentDept, match, String(weekKey).trim(), Number(val));
+        totalCells++;
+      }
+    }
+  }
+  await saveEstimates();
+  if(empresasEncontradas.length===0){
+    statusEl.textContent = 'No se encontraron pestañas CP/WF/TB/SV en el archivo. Verifique que sea la plantilla correcta para este departamento.';
+  } else {
+    statusEl.textContent = `Importado: ${empresasEncontradas.join(', ')} · ${totalConceptsMatched} conceptos · ${totalCells} valores cargados.`;
+    renderCapturaTable();
+  }
+}
+
+document.getElementById('importDeptFile').addEventListener('change', async (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  const statusEl = document.getElementById('importStatus');
+  statusEl.textContent = 'Procesando...';
+  try{
+    const data = await file.arrayBuffer();
+    await importDeptWorkbookBytes(data, statusEl);
+  }catch(err){
+    console.error(err);
+    statusEl.textContent = 'No se pudo leer el archivo. Verifique que sea un .xlsx generado a partir de la plantilla.';
+  }
+  e.target.value='';
+});
+
+/* ================= IMPORTAR DESDE DRIVE ("Capturas por área") ================= */
+document.getElementById('btnBuscarEnDrive').addEventListener('click', async ()=>{
+  const listEl = document.getElementById('drivePickerList');
+  const statusEl = document.getElementById('importStatus');
+  if(!driveReady){ statusEl.textContent = 'Conecte Google Drive primero (pestaña "Google Drive").'; return; }
+  statusEl.textContent = 'Buscando archivos en Drive...';
+  listEl.innerHTML='';
+  try{
+    const files = await driveListFilesInFolder(folderIds.capturas);
+    if(!files.length){ statusEl.textContent = `No hay archivos en "${CARPETA_CAPTURAS}" todavía.`; return; }
+    statusEl.textContent = `${files.length} archivo(s) encontrado(s). Elija uno:`;
+    files.forEach(f=>{
+      const btn = document.createElement('button');
+      btn.className='btn secondary small';
+      btn.style.marginRight='6px'; btn.style.marginBottom='6px';
+      btn.textContent = `${f.name} (${new Date(f.modifiedTime).toLocaleString('es-VE')})`;
+      btn.onclick = async ()=>{
+        statusEl.textContent = 'Descargando e importando...';
+        try{
+          const bytes = await driveDownloadBytes(f.id);
+          await importDeptWorkbookBytes(bytes, statusEl);
+          listEl.innerHTML='';
+        }catch(err){ console.error(err); statusEl.textContent = 'No se pudo leer ese archivo desde Drive.'; }
+      };
+      listEl.appendChild(btn);
+    });
+  }catch(err){
+    console.error(err);
+    statusEl.textContent = 'Error consultando Drive. Verifique la conexión en la pestaña "Google Drive".';
+  }
+});
+
+/* ================= MODAL: cerrar semana ================= */
+let modalCtx = null;
+function openCloseModal(empresa,depto,weekObj){
+  modalCtx = {empresa,depto,weekObj};
+  document.getElementById('modalTitle').textContent = `Cargar real — ${EMPRESA_NOMBRE[empresa]} · ${DEPT_LABEL[depto]} · Semana ${weekObj.week}·${weekObj.isoYear}`;
+  document.getElementById('modalHint').textContent = `Periodo ${fmtDateLong(weekObj.start)} al ${fmtDateLong(weekObj.end)}. Suba un CSV (concepto,monto) o edite el texto. Los conceptos no reconocidos se ignoran.`;
+  const conceptos = CONCEPTS[empresa][depto]||[];
+  const lines = conceptos.map(c=>{
+    const est = getEstimate(empresa,depto,c,weekObj.key) ?? 0;
+    return `${c},${est}`;
+  });
+  document.getElementById('modalTextarea').value = lines.join('\n');
+  document.getElementById('modalFile').value = '';
+  document.getElementById('modalBg').classList.add('active');
+}
+document.getElementById('modalCancel').onclick = ()=>{ document.getElementById('modalBg').classList.remove('active'); };
+document.getElementById('modalFile').addEventListener('change', (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = ()=>{ document.getElementById('modalTextarea').value = reader.result; };
+  reader.readAsText(file);
+});
+document.getElementById('modalConfirm').onclick = async ()=>{
+  if(!modalCtx) return;
+  const {empresa,depto,weekObj} = modalCtx;
+  const conceptos = CONCEPTS[empresa][depto]||[];
+  const map = {}; conceptos.forEach(c=>map[c.toUpperCase().trim()]=c);
+  const text = document.getElementById('modalTextarea').value;
+  let matched=0, skipped=0;
+  text.split('\n').forEach(line=>{
+    const parts = line.split(',');
+    if(parts.length<2) return;
+    const key = parts[0].toUpperCase().trim();
+    const val = Number(parts.slice(1).join(',').trim());
+    if(map[key] && !isNaN(val)){
+      setActual(empresa,depto,map[key],weekObj.key,val);
+      matched++;
+    } else if(line.trim()!==''){ skipped++; }
+  });
+  setClosed(empresa,depto,weekObj.key,true);
+  await Promise.all([saveActuals(), saveClosedMap()]);
+  document.getElementById('modalBg').classList.remove('active');
+  renderCapturaTable();
+  alert(`Semana ${weekObj.week}·${weekObj.isoYear} cerrada para ${EMPRESA_NOMBRE[empresa]} · ${DEPT_LABEL[depto]}. ${matched} conceptos cargados${skipped?`, ${skipped} líneas no reconocidas`:''}.`);
+};
+
+/* ================= PROYECCIÓN POR EMPRESA ================= */
+function renderCompanyTabsProy(){
+  const el = document.getElementById('companyTabsProy');
+  el.innerHTML='';
+  EMPRESAS.forEach(e=>{
+    const b=document.createElement('button');
+    b.textContent=EMPRESA_NOMBRE[e];
+    if(e===currentCompanyProy) b.classList.add('active');
+    b.onclick=()=>{ currentCompanyProy=e; renderCompanyTabsProy(); renderProyEmpresa(); };
+    el.appendChild(b);
+  });
+}
+document.getElementById('currencyTabsProy').addEventListener('click',(e)=>{
+  if(e.target.tagName!=='BUTTON') return;
+  document.querySelectorAll('#currencyTabsProy button').forEach(b=>b.classList.remove('active'));
+  e.target.classList.add('active');
+  currentCurProy = e.target.dataset.cur;
+  renderProyEmpresa();
+});
+
+function computeCompanySeries(empresa, weeks){
+  // returns array of {week, sectionTotalsBs:{}, netoBs, saldoIniBs, saldoFinBs, rate}
+  const series=[];
+  let saldoIni = getOpeningBalance(empresa);
+  weeks.forEach(w=>{
+    const sectionTotals={};
+    DEPTS.forEach(d=>{
+      const conceptos = CONCEPTS[empresa][d.key]||[];
+      let sum=0;
+      conceptos.forEach(c=>{ sum += valueForWeek(empresa,d.key,c,w.key)||0; });
+      sectionTotals[d.key]=sum;
+    });
+    let neto=0;
+    DEPTS.forEach(d=>{ neto += DEPT_SIGN[d.key]*sectionTotals[d.key]; });
+    const saldoFin = saldoIni+neto;
+    const rate = getEffectiveRate(w.key);
+    series.push({week:w, sectionTotals, neto, saldoIni, saldoFin, rate});
+    saldoIni = saldoFin;
+  });
+  return series;
+}
+
+function renderProyEmpresa(){
+  renderCompanyTabsProy();
+  const weeks = generateWeeks(weeksCountCaptura);
+  const series = computeCompanySeries(currentCompanyProy, weeks);
+  const cur = currentCurProy;
+  const table = document.getElementById('proyEmpresaTable');
+  table.innerHTML='';
+  const thead=document.createElement('thead'); const trh=document.createElement('tr');
+  const thc=document.createElement('th'); thc.className='concept'; thc.textContent = cur==='bs'?'Concepto (Bs)':'Concepto (US$)'; trh.appendChild(thc);
+  weeks.forEach(w=>{
+    const th=document.createElement('th');
+    th.innerHTML = `S${w.week}·${w.isoYear}<br><span style="font-weight:400;font-size:10px;">${fmtDateShort(w.start)}–${fmtDateShort(w.end)}</span>`;
+    trh.appendChild(th);
+  });
+  thead.appendChild(trh); table.appendChild(thead);
+  const tbody=document.createElement('tbody');
+
+  function convert(val,rate){ if(cur==='bs') return val; if(rate===null) return null; return val/rate; }
+
+  function addRow(label, getter, cls){
+    const tr=document.createElement('tr'); if(cls) tr.classList.add(cls);
+    const tdc=document.createElement('td'); tdc.className='concept'; tdc.textContent=label; tr.appendChild(tdc);
+    series.forEach(s=>{
+      const td=document.createElement('td');
+      const v = convert(getter(s), s.rate);
+      td.textContent = cur==='bs'? fmtBs(v) : fmtUsd(v);
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  }
+  addRow('SALDO INICIAL', s=>s.saldoIni, 'total-row');
+  DEPTS.forEach(d=>{
+    addRow(`${d.sign>0?'(+)':'(-)'} ${d.label}`, s=>s.sectionTotals[d.key], 'subtotal-row');
+  });
+  addRow('TOTAL NETO SEMANAL', s=>s.neto, 'subtotal-row');
+  addRow('SALDO FINAL', s=>s.saldoFin, 'total-row');
+  addRow('Tasa BCV promedio semana', s=> s.rate, '');
+  table.appendChild(tbody);
+
+  // KPI
+  const kpiEl = document.getElementById('kpiEmpresa');
+  const last = series[series.length-1];
+  const first = series[0];
+  kpiEl.innerHTML='';
+  const kpis = [
+    ['Saldo actual', convert(first.saldoIni,first.rate)],
+    [`Saldo proyectado (S${last.week.week})`, convert(last.saldoFin,last.rate)],
+    ['Variación del periodo', convert(last.saldoFin-first.saldoIni, last.rate)],
+  ];
+  kpis.forEach(([lbl,val])=>{
+    const div=document.createElement('div'); div.className='kpi';
+    div.innerHTML = `<div class="lbl">${lbl}</div><div class="val ${val<0?'neg':''}">${cur==='bs'?fmtBs(val):fmtUsd(val)} ${cur==='bs'?'Bs':'US$'}</div>`;
+    kpiEl.appendChild(div);
+  });
+
+  renderMonthlySummary(series, cur, document.getElementById('proyEmpresaMonthly'));
+}
+
+function renderMonthlySummary(series, cur, table){
+  // group weeks by month label
+  const months = [];
+  const byMonth = {};
+  series.forEach(s=>{
+    const m = s.week.monthLabel;
+    if(!byMonth[m]){ byMonth[m]=[]; months.push(m); }
+    byMonth[m].push(s);
+  });
+  table.innerHTML='';
+  const thead=document.createElement('thead'); const trh=document.createElement('tr');
+  const thc=document.createElement('th'); thc.className='concept'; thc.textContent='Concepto'; trh.appendChild(thc);
+  months.forEach(m=>{ const th=document.createElement('th'); th.textContent=m; trh.appendChild(th); });
+  thead.appendChild(trh); table.appendChild(thead);
+  const tbody=document.createElement('tbody');
+  function convert(val,rate){ if(cur==='bs') return val; if(rate===null||rate===undefined) return null; return val/rate; }
+  function addRow(label, monthAgg, cls){
+    const tr=document.createElement('tr'); if(cls) tr.classList.add(cls);
+    const tdc=document.createElement('td'); tdc.className='concept'; tdc.textContent=label; tr.appendChild(tdc);
+    months.forEach(m=>{
+      const td=document.createElement('td');
+      const v = monthAgg(byMonth[m]);
+      td.textContent = cur==='bs'? fmtBs(v) : fmtUsd(v);
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  }
+  addRow('SALDO INICIAL', arr=>convert(arr[0].saldoIni, arr[0].rate), 'total-row');
+  DEPTS.forEach(d=>{
+    addRow(`${d.sign>0?'(+)':'(-)'} ${d.label}`, arr=>{
+      let sum=0, any=false;
+      arr.forEach(s=>{ const v=convert(s.sectionTotals[d.key], s.rate); if(v!==null){sum+=v; any=true;} });
+      return any? sum : null;
+    }, 'subtotal-row');
+  });
+  addRow('TOTAL NETO DEL MES', arr=>{
+    let sum=0, any=false;
+    arr.forEach(s=>{ const v=convert(s.neto,s.rate); if(v!==null){sum+=v;any=true;} });
+    return any? sum: null;
+  }, 'subtotal-row');
+  addRow('SALDO FINAL DEL MES', arr=>convert(arr[arr.length-1].saldoFin, arr[arr.length-1].rate), 'total-row');
+  table.appendChild(tbody);
+}
+
+/* ================= CONSOLIDADO ================= */
+document.getElementById('currencyTabsCons').addEventListener('click',(e)=>{
+  if(e.target.tagName!=='BUTTON') return;
+  document.querySelectorAll('#currencyTabsCons button').forEach(b=>b.classList.remove('active'));
+  e.target.classList.add('active');
+  currentCurCons = e.target.dataset.cur;
+  renderConsolidado();
+});
+function renderConsolidado(){
+  const weeks = generateWeeks(weeksCountCaptura);
+  const cur = currentCurCons;
+  const allSeries = {};
+  EMPRESAS.forEach(e=>{ allSeries[e] = computeCompanySeries(e, weeks); });
+
+  function convertVal(val,rate){ if(cur==='bs') return val; if(rate===null) return null; return val/rate; }
+
+  const combined = weeks.map((w,i)=>{
+    let saldoIni=0, saldoFin=0, neto=0; const sectionTotals={};
+    DEPTS.forEach(d=>sectionTotals[d.key]=0);
+    let rate = getEffectiveRate(w.key);
+    EMPRESAS.forEach(e=>{
+      const s = allSeries[e][i];
+      saldoIni += convertVal(s.saldoIni, s.rate) ?? 0;
+      saldoFin += convertVal(s.saldoFin, s.rate) ?? 0;
+      neto += convertVal(s.neto, s.rate) ?? 0;
+      DEPTS.forEach(d=>{ sectionTotals[d.key]+= convertVal(s.sectionTotals[d.key], s.rate) ?? 0; });
+    });
+    return {week:w, saldoIni, saldoFin, neto, sectionTotals, rate};
+  });
+
+  const table = document.getElementById('consTable');
+  table.innerHTML='';
+  const thead=document.createElement('thead'); const trh=document.createElement('tr');
+  const thc=document.createElement('th'); thc.className='concept'; thc.textContent = cur==='bs'?'Concepto (Bs)':'Concepto (US$)'; trh.appendChild(thc);
+  weeks.forEach(w=>{
+    const th=document.createElement('th');
+    th.innerHTML = `S${w.week}·${w.isoYear}<br><span style="font-weight:400;font-size:10px;">${fmtDateShort(w.start)}–${fmtDateShort(w.end)}</span>`;
+    trh.appendChild(th);
+  });
+  thead.appendChild(trh); table.appendChild(thead);
+  const tbody=document.createElement('tbody');
+  function addRow(label, getter, cls){
+    const tr=document.createElement('tr'); if(cls) tr.classList.add(cls);
+    const tdc=document.createElement('td'); tdc.className='concept'; tdc.textContent=label; tr.appendChild(tdc);
+    combined.forEach(s=>{
+      const td=document.createElement('td');
+      td.textContent = cur==='bs'? fmtBs(getter(s)) : fmtUsd(getter(s));
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  }
+  addRow('SALDO INICIAL (4 empresas)', s=>s.saldoIni,'total-row');
+  DEPTS.forEach(d=> addRow(`${d.sign>0?'(+)':'(-)'} ${d.label}`, s=>s.sectionTotals[d.key],'subtotal-row'));
+  addRow('TOTAL NETO SEMANAL', s=>s.neto,'subtotal-row');
+  addRow('SALDO FINAL (4 empresas)', s=>s.saldoFin,'total-row');
+  table.appendChild(tbody);
+
+  const kpiEl = document.getElementById('kpiConsolidado');
+  kpiEl.innerHTML='';
+  const first=combined[0], last=combined[combined.length-1];
+  const kpis = [
+    ['Saldo actual consolidado', first.saldoIni],
+    [`Saldo proyectado (S${last.week.week})`, last.saldoFin],
+    ['Variación del periodo', last.saldoFin-first.saldoIni],
+  ];
+  kpis.forEach(([lbl,val])=>{
+    const div=document.createElement('div'); div.className='kpi';
+    div.innerHTML = `<div class="lbl">${lbl}</div><div class="val ${val<0?'neg':''}">${cur==='bs'?fmtBs(val):fmtUsd(val)} ${cur==='bs'?'Bs':'US$'}</div>`;
+    kpiEl.appendChild(div);
+  });
+
+  // monthly summary consolidated
+  const monthsTable = document.getElementById('consMonthly');
+  const months=[]; const byMonth={};
+  combined.forEach(s=>{ const m=s.week.monthLabel; if(!byMonth[m]){byMonth[m]=[]; months.push(m);} byMonth[m].push(s); });
+  monthsTable.innerHTML='';
+  const th2=document.createElement('thead'); const tr2=document.createElement('tr');
+  const tc2=document.createElement('th'); tc2.className='concept'; tc2.textContent='Concepto'; tr2.appendChild(tc2);
+  months.forEach(m=>{ const th=document.createElement('th'); th.textContent=m; tr2.appendChild(th); });
+  th2.appendChild(tr2); monthsTable.appendChild(th2);
+  const tb2=document.createElement('tbody');
+  function addRow2(label, agg, cls){
+    const tr=document.createElement('tr'); if(cls) tr.classList.add(cls);
+    const tdc=document.createElement('td'); tdc.className='concept'; tdc.textContent=label; tr.appendChild(tdc);
+    months.forEach(m=>{ const td=document.createElement('td'); td.textContent= cur==='bs'?fmtBs(agg(byMonth[m])):fmtUsd(agg(byMonth[m])); tr.appendChild(td); });
+    tb2.appendChild(tr);
+  }
+  addRow2('SALDO INICIAL', arr=>arr[0].saldoIni,'total-row');
+  DEPTS.forEach(d=> addRow2(`${d.sign>0?'(+)':'(-)'} ${d.label}`, arr=>arr.reduce((a,s)=>a+s.sectionTotals[d.key],0),'subtotal-row'));
+  addRow2('TOTAL NETO DEL MES', arr=>arr.reduce((a,s)=>a+s.neto,0),'subtotal-row');
+  addRow2('SALDO FINAL DEL MES', arr=>arr[arr.length-1].saldoFin,'total-row');
+  monthsTable.appendChild(tb2);
+}
+
+/* ================= TASA DE CAMBIO ================= */
+document.getElementById('btnAbrirBCV').onclick = ()=>{
+  window.open('https://www.bcv.org.ve/', '_blank', 'noopener');
+};
+document.getElementById('btnSaveRate').onclick = async ()=>{
+  const dateEl = document.getElementById('tcDateInput');
+  const rateEl = document.getElementById('tcRateInput');
+  if(!dateEl.value || !rateEl.value) { alert('Ingrese fecha y tasa.'); return; }
+  tcDiario[dateEl.value] = Number(rateEl.value);
+  await saveTC();
+  rateEl.value='';
+  renderTC();
+};
+document.getElementById('btnRecalcularTC').onclick = ()=>{
+  const {actualizadas, sinDatoDiario, total} = recalcularTasasSemanales();
+  document.getElementById('recalcStatus').textContent =
+    `Recalculado: ${actualizadas} de ${total} semanas se actualizaron con el promedio de sus tasas diarias` +
+    (sinDatoDiario? ` · ${sinDatoDiario} semanas sin ningún dato diario quedaron con su valor manual (o vacías).` : '.');
+  renderTC();
+};
+function renderTC(){
+  const dateEl = document.getElementById('tcDateInput');
+  if(!dateEl.value) dateEl.value = isoDateStr(TODAY);
+  const weeks = generateWeeks(weeksCountCaptura);
+  const table = document.getElementById('tcTable');
+  table.innerHTML='';
+  const thead=document.createElement('thead');
+  const trh=document.createElement('tr');
+  ['Semana','Periodo','Tasas diarias cargadas','Promedio calculado (referencia)','Tasa semanal usada en la proyección'].forEach(h=>{
+    const th=document.createElement('th'); th.textContent=h; if(h==='Semana') th.className='concept'; trh.appendChild(th);
+  });
+  thead.appendChild(trh); table.appendChild(thead);
+  const tbody=document.createElement('tbody');
+  weeks.forEach(w=>{
+    const tr=document.createElement('tr');
+    const td0=document.createElement('td'); td0.className='concept'; td0.textContent=`Semana ${w.week} · ${w.isoYear}`; tr.appendChild(td0);
+    const td1=document.createElement('td'); td1.style.textAlign='left'; td1.textContent=`${fmtDateShort(w.start)} – ${fmtDateShort(w.end)}`; tr.appendChild(td1);
+    const dailyVals = [];
+    const d = new Date(w.start);
+    for(let i=0;i<7;i++){ const k=isoDateStr(d); if(tcDiario[k]!==undefined) dailyVals.push(`${fmtDateShort(d)}: ${tcDiario[k]}`); d.setUTCDate(d.getUTCDate()+1); }
+    const td2=document.createElement('td'); td2.style.textAlign='left'; td2.style.whiteSpace='normal'; td2.style.fontSize='11px'; td2.textContent = dailyVals.length? dailyVals.join(' · ') : 'Sin datos diarios';
+    tr.appendChild(td2);
+    const avg = weekAvgRate(w);
+    const td3=document.createElement('td'); td3.style.color='var(--text-mute)'; td3.textContent = avg!==null? avg.toLocaleString('en-US',{minimumFractionDigits:4,maximumFractionDigits:4}) : '—';
+    tr.appendChild(td3);
+    const td4=document.createElement('td');
+    const input=document.createElement('input');
+    input.className='cell-input'; input.type='number'; input.step='0.0001'; input.style.fontWeight='700'; input.style.width='100px';
+    const eff = getEffectiveRate(w.key);
+    input.value = eff!==null? eff : '';
+    input.placeholder='manual';
+    input.addEventListener('change', ()=>{
+      tcSemanal[w.key] = input.value===''? null : Number(input.value);
+      saveTCSemanal();
+    });
+    td4.appendChild(input);
+    tr.appendChild(td4);
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+}
+
+/* ================= HISTÓRICO ================= */
+/* ================= EXPORTAR / IMPORTAR HISTÓRICO (respaldo completo) ================= */
+async function exportHistoricoExcel(){
+  const wbOut = XLSX.utils.book_new();
+
+  // Hoja Historico: solo semanas cerradas, estimado vs real
+  const histRows = [['Empresa','Departamento','SemanaClave','Concepto','Estimado_Bs','Real_Bs']];
+  Object.keys(closedMap).filter(k=>closedMap[k]).forEach(k=>{
+    const [empresa,depto,weekKey] = k.split('|');
+    const conceptos = (CONCEPTS[empresa]||{})[depto]||[];
+    conceptos.forEach(c=>{
+      const real = getActual(empresa,depto,c,weekKey);
+      if(real===null) return;
+      const est = getEstimate(empresa,depto,c,weekKey) ?? 0;
+      histRows.push([empresa,depto,weekKey,c,est,real]);
+    });
+  });
+  XLSX.utils.book_append_sheet(wbOut, XLSX.utils.aoa_to_sheet(histRows), 'Historico');
+
+  // Hoja Estimados: TODOS los estimados cargados (pasados y futuros)
+  const estRows = [['Empresa','Departamento','Concepto','SemanaClave','Monto_Bs']];
+  Object.keys(estimates).forEach(empresa=>{
+    Object.keys(estimates[empresa]).forEach(depto=>{
+      Object.keys(estimates[empresa][depto]).forEach(concepto=>{
+        Object.keys(estimates[empresa][depto][concepto]).forEach(weekKey=>{
+          const v = estimates[empresa][depto][concepto][weekKey];
+          if(v===null||v===undefined) return;
+          estRows.push([empresa,depto,concepto,weekKey,v]);
+        });
+      });
+    });
+  });
+  XLSX.utils.book_append_sheet(wbOut, XLSX.utils.aoa_to_sheet(estRows), 'Estimados');
+
+  // Hoja Cerradas: qué combinaciones empresa/depto/semana están cerradas
+  const closedRows = [['Empresa','Departamento','SemanaClave']];
+  Object.keys(closedMap).filter(k=>closedMap[k]).forEach(k=>{
+    const [empresa,depto,weekKey] = k.split('|');
+    closedRows.push([empresa,depto,weekKey]);
+  });
+  XLSX.utils.book_append_sheet(wbOut, XLSX.utils.aoa_to_sheet(closedRows), 'Cerradas');
+
+  // Hoja TasaDiaria
+  const tcdRows = [['Fecha','Tasa']];
+  Object.keys(tcDiario).sort().forEach(f=>{ tcdRows.push([f, tcDiario[f]]); });
+  XLSX.utils.book_append_sheet(wbOut, XLSX.utils.aoa_to_sheet(tcdRows), 'TasaDiaria');
+
+  // Hoja TasaSemanal (la tasa efectiva usada en la proyección)
+  const tcsRows = [['SemanaClave','Tasa']];
+  Object.keys(tcSemanal).sort().forEach(w=>{ if(tcSemanal[w]!==null && tcSemanal[w]!==undefined) tcsRows.push([w, tcSemanal[w]]); });
+  XLSX.utils.book_append_sheet(wbOut, XLSX.utils.aoa_to_sheet(tcsRows), 'TasaSemanal');
+
+  // Hoja SaldosPorBanco (detalle) + SaldosIniciales (total por empresa, calculado)
+  const bancoRows = [['Empresa','Banco','Saldo_Bs']];
+  EMPRESAS.forEach(e=>{ (bankBalances[e]||[]).forEach(b=>{ bancoRows.push([e, b.banco||'', Number(b.saldo)||0]); }); });
+  XLSX.utils.book_append_sheet(wbOut, XLSX.utils.aoa_to_sheet(bancoRows), 'SaldosPorBanco');
+
+  const saldoRows = [['Empresa','Saldo_Bs']];
+  EMPRESAS.forEach(e=>{ saldoRows.push([e, getOpeningBalance(e)]); });
+  XLSX.utils.book_append_sheet(wbOut, XLSX.utils.aoa_to_sheet(saldoRows), 'SaldosIniciales');
+
+  const fecha = isoDateStr(TODAY);
+  const filename = `Historico_FC_Semanal_${fecha}.xlsx`;
+  const bytes = XLSX.write(wbOut, {bookType:'xlsx', type:'array'});
+
+  // 1) Si Drive está conectado, sube el archivo directo a la carpeta "Historico de flujo de caja".
+  if(driveReady && folderIds.historico){
+    try{
+      await driveCreateFileMultipart(folderIds.historico, filename, new Blob([bytes],{type:'application/octet-stream'}), 'application/octet-stream');
+      return 'drive';
+    }catch(err){ console.warn('subida a Drive falló, se intenta guardado local', err); }
+  }
+
+  // 2) Si el navegador soporta "Guardar como" (File System Access API), se puede elegir
+  // directamente una carpeta local sincronizada de Google Drive.
+  if(window.showSaveFilePicker){
+    try{
+      const handle = await window.showSaveFilePicker({
+        suggestedName: filename,
+        types: [{description:'Excel', accept:{'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':['.xlsx']}}]
+      });
+      const writable = await handle.createWritable();
+      await writable.write(new Blob([bytes], {type:'application/octet-stream'}));
+      await writable.close();
+      return 'picker';
+    }catch(err){
+      if(err && err.name==='AbortError') return 'cancelled';
+      console.warn('showSaveFilePicker falló, se usa descarga normal', err);
+    }
+  }
+  XLSX.writeFile(wbOut, filename);
+  return 'download';
+}
+
+document.getElementById('btnExportHist').onclick = async ()=>{
+  const statusEl = document.getElementById('histIOStatus');
+  statusEl.textContent = 'Generando archivo...';
+  const result = await exportHistoricoExcel();
+  if(result==='drive'){
+    statusEl.textContent = `✓ Subido directo a la carpeta "${CARPETA_HISTORICO}" de su Google Drive.`;
+  } else if(result==='picker'){
+    statusEl.textContent = 'Guardado en la carpeta que eligió (ideal: su carpeta sincronizada "Historico de flujo de caja" de Google Drive).';
+  } else if(result==='cancelled'){
+    statusEl.textContent = 'Exportación cancelada.';
+  } else {
+    statusEl.textContent = 'Descargado a su carpeta de Descargas. Muévalo a la carpeta "Historico de flujo de caja" de Drive para que quede sincronizado.';
+  }
+};
+
+document.getElementById('importHistFile').addEventListener('change', async (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  const statusEl = document.getElementById('histIOStatus');
+  statusEl.textContent = 'Importando...';
+  try{
+    const data = await file.arrayBuffer();
+    const wbIn = XLSX.read(data, {type:'array'});
+    let counts = {estimados:0, cerradas:0, tasaDiaria:0, tasaSemanal:0, saldos:0};
+
+    if(wbIn.SheetNames.includes('Estimados')){
+      const rows = XLSX.utils.sheet_to_json(wbIn.Sheets['Estimados'], {header:1, defval:null});
+      for(let i=1;i<rows.length;i++){
+        const [empresa,depto,concepto,weekKey,monto] = rows[i];
+        if(!empresa||!depto||!concepto||!weekKey||monto===null||monto===undefined) continue;
+        setEstimate(empresa,depto,concepto,String(weekKey).trim(),Number(monto));
+        counts.estimados++;
+      }
+    }
+    if(wbIn.SheetNames.includes('Historico')){
+      const rows = XLSX.utils.sheet_to_json(wbIn.Sheets['Historico'], {header:1, defval:null});
+      for(let i=1;i<rows.length;i++){
+        const [empresa,depto,weekKey,concepto,est,real] = rows[i];
+        if(!empresa||!depto||!weekKey||!concepto) continue;
+        if(real!==null && real!==undefined) setActual(empresa,depto,concepto,String(weekKey).trim(),Number(real));
+      }
+    }
+    if(wbIn.SheetNames.includes('Cerradas')){
+      const rows = XLSX.utils.sheet_to_json(wbIn.Sheets['Cerradas'], {header:1, defval:null});
+      for(let i=1;i<rows.length;i++){
+        const [empresa,depto,weekKey] = rows[i];
+        if(!empresa||!depto||!weekKey) continue;
+        setClosed(empresa,depto,String(weekKey).trim(),true);
+        counts.cerradas++;
+      }
+    }
+    if(wbIn.SheetNames.includes('TasaDiaria')){
+      const rows = XLSX.utils.sheet_to_json(wbIn.Sheets['TasaDiaria'], {header:1, defval:null});
+      for(let i=1;i<rows.length;i++){
+        const [fecha,tasa] = rows[i];
+        if(!fecha||tasa===null||tasa===undefined) continue;
+        tcDiario[String(fecha).trim()] = Number(tasa);
+        counts.tasaDiaria++;
+      }
+    }
+    if(wbIn.SheetNames.includes('TasaSemanal')){
+      const rows = XLSX.utils.sheet_to_json(wbIn.Sheets['TasaSemanal'], {header:1, defval:null});
+      for(let i=1;i<rows.length;i++){
+        const [weekKey,tasa] = rows[i];
+        if(!weekKey||tasa===null||tasa===undefined) continue;
+        tcSemanal[String(weekKey).trim()] = Number(tasa);
+        counts.tasaSemanal++;
+      }
+    }
+    if(wbIn.SheetNames.includes('SaldosPorBanco')){
+      const rows = XLSX.utils.sheet_to_json(wbIn.Sheets['SaldosPorBanco'], {header:1, defval:null});
+      const seen = {};
+      for(let i=1;i<rows.length;i++){
+        const [empresa,banco,saldo] = rows[i];
+        if(!empresa||saldo===null||saldo===undefined) continue;
+        if(!seen[empresa]){ bankBalances[empresa]=[]; seen[empresa]=true; }
+        bankBalances[empresa].push({banco: banco||'', saldo: Number(saldo)});
+        counts.saldos++;
+      }
+    } else if(wbIn.SheetNames.includes('SaldosIniciales')){
+      const rows = XLSX.utils.sheet_to_json(wbIn.Sheets['SaldosIniciales'], {header:1, defval:null});
+      for(let i=1;i<rows.length;i++){
+        const [empresa,saldo] = rows[i];
+        if(!empresa||saldo===null||saldo===undefined) continue;
+        bankBalances[empresa] = [{banco:'Banco principal', saldo: Number(saldo)}];
+        counts.saldos++;
+      }
+    }
+
+    await Promise.all([saveEstimates(), saveActuals(), saveClosedMap(), saveTC(), saveTCSemanal(), saveOpening(), saveBankBalances()]);
+    statusEl.textContent = `Importado: ${counts.estimados} estimados · ${counts.cerradas} semanas cerradas · ${counts.tasaDiaria} tasas diarias · ${counts.tasaSemanal} tasas semanales · ${counts.saldos} saldos iniciales.`;
+    renderHistorico();
+    renderCapturaTable();
+    renderBancos();
+  }catch(err){
+    console.error(err);
+    statusEl.textContent = 'No se pudo leer el archivo. Verifique que sea un respaldo exportado desde esta misma herramienta.';
+  }
+  e.target.value='';
+});
+
+function renderHistorico(){
+  const el = document.getElementById('historicoList');
+  el.innerHTML='';
+  const keys = Object.keys(closedMap).filter(k=>closedMap[k]);
+  if(!keys.length){ el.innerHTML = '<div class="empty-state">Todavía no hay semanas cerradas con datos reales.</div>'; return; }
+  // group by week
+  const byWeek = {};
+  keys.forEach(k=>{
+    const [empresa,depto,weekKey] = k.split('|');
+    byWeek[weekKey] = byWeek[weekKey]||[];
+    byWeek[weekKey].push({empresa,depto});
+  });
+  Object.keys(byWeek).sort().reverse().forEach(weekKey=>{
+    const div = document.createElement('div'); div.className='hist-item';
+    const head = document.createElement('div'); head.className='hr-head';
+    head.innerHTML = `<span>Semana ${weekKey}</span><span style="font-weight:400;font-size:11px;color:var(--text-mute);">${byWeek[weekKey].length} cierre(s)</span>`;
+    div.appendChild(head);
+    byWeek[weekKey].forEach(({empresa,depto})=>{
+      const conceptos = CONCEPTS[empresa][depto]||[];
+      const t = document.createElement('table');
+      const trh = document.createElement('tr');
+      trh.innerHTML = `<th class="concept">${EMPRESA_NOMBRE[empresa]} · ${DEPT_LABEL[depto]}</th><th>Estimado</th><th>Real</th><th>Diferencia</th>`;
+      t.appendChild(trh);
+      let totalEst=0, totalReal=0;
+      conceptos.forEach(c=>{
+        const est = getEstimate(empresa,depto,c,weekKey) ?? 0;
+        const real = getActual(empresa,depto,c,weekKey);
+        if(real===null) return;
+        totalEst+=est; totalReal+=real;
+        const tr=document.createElement('tr');
+        const diff = real-est;
+        tr.innerHTML = `<td class="concept">${c}</td><td>${fmtBs(est)}</td><td>${fmtBs(real)}</td><td class="${diff>=0?'diff-pos':'diff-neg'}">${fmtBs(diff)}</td>`;
+        t.appendChild(tr);
+      });
+      const trt = document.createElement('tr');
+      trt.innerHTML = `<td class="concept" style="font-weight:700;">TOTAL</td><td style="font-weight:700;">${fmtBs(totalEst)}</td><td style="font-weight:700;">${fmtBs(totalReal)}</td><td style="font-weight:700;" class="${(totalReal-totalEst)>=0?'diff-pos':'diff-neg'}">${fmtBs(totalReal-totalEst)}</td>`;
+      t.appendChild(trt);
+      div.appendChild(t);
+    });
+    el.appendChild(div);
+  });
+}
+
+/* ================= INIT ================= */
+async function init(){
+  document.getElementById('todayLabel').textContent = fmtDateLong(TODAY);
+  document.getElementById('currentWeekLabel').textContent = `Semana ${todayInfo.week} · ${todayInfo.isoYear}`;
+  const savedClientId = localStorage.getItem('fc_client_id');
+  if(savedClientId){
+    document.getElementById('clientIdInput').value = savedClientId;
+    if(window.google && google.accounts) initGoogleAuth(savedClientId);
+    document.getElementById('driveStatus').textContent = 'Client ID recordado. Presione "Conectar con Google Drive".';
+  }
+  // Mientras no haya conexión con Drive, se muestran las tablas vacías (sin datos guardados localmente).
+  renderDeptTabs();
+  renderCompanyTabsCaptura();
+  renderCapturaTable();
+}
+init();
+</script>
+</body>
+</html>
