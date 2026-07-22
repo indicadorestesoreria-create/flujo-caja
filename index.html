@@ -187,7 +187,7 @@
   <section id="view-captura" class="view">
     <div class="panel">
       <h2>Captura de estimados por departamento</h2>
-      <p class="hint">Cada área completa su plantilla de Excel (una por departamento, con una pestaña por empresa) y la importa aquí. El archivo se procesa completo — las 4 empresas de un solo golpe — y llena la tabla de abajo. También puede editar celdas sueltas directamente en la tabla si necesita un ajuste puntual. <b>Tip:</b> si tiene Google Drive para escritorio instalado y la carpeta "Capturas por área" sincronizada en su computador, el selector de archivo de abajo la va a mostrar como una carpeta normal — puede navegar directo ahí y elegir el archivo que le enviaron.</p>
+      <p class="hint">Cada área completa su plantilla de Excel (una por departamento, con una pestaña por empresa) y la importa aquí. El archivo se procesa completo — las 4 empresas de un solo golpe — y llena la tabla de abajo. También puede editar celdas sueltas directamente en la tabla si necesita un ajuste puntual. La tabla siempre muestra algunas semanas ya vencidas (marcadas "VENCIDA") además de las futuras — haga clic en el encabezado de esa semana para cargarle el dato real y cerrarla; use "← Cargar 8 semanas anteriores" si necesita ir más atrás. <b>Tip:</b> si tiene Google Drive para escritorio instalado y la carpeta "Capturas por área" sincronizada en su computador, el selector de archivo de abajo la va a mostrar como una carpeta normal — puede navegar directo ahí y elegir el archivo que le enviaron.</p>
       <div class="subtabs" id="deptTabs"></div>
       <div class="toolbar" id="importBar" style="background:var(--navy-soft); border-radius:8px; padding:10px 14px;">
         <label class="btn accent small" style="cursor:pointer;">
@@ -200,6 +200,7 @@
       <div id="drivePickerList" style="margin-bottom:10px;"></div>
       <div class="subtabs company" id="companyTabsCaptura"></div>
       <div class="toolbar">
+        <button class="btn secondary small" id="btnMorePastCap">← Cargar 8 semanas anteriores</button>
         <button class="btn secondary small" id="btnMoreWeeksCap">Cargar 10 semanas más →</button>
         <span id="capSummary" style="font-size:12px;color:var(--text-mute);"></span>
       </div>
@@ -601,7 +602,8 @@ function bankHistoryRows(empresa){
   rows.sort((a,b)=> b.fecha.localeCompare(a.fecha) || a.banco.localeCompare(b.banco));
   return rows;
 }
-let weeksCountCaptura = 82; // cubre desde la semana actual hasta finales de enero 2028
+let weeksCountCaptura = 82; // semanas hacia adelante: cubre desde la semana actual hasta finales de enero 2028
+let weeksPastCaptura = 8;   // semanas hacia atrás: para poder seguir viendo y cerrando semanas ya vencidas
 let currentDept = 'NOMINA';
 let currentCompanyCap = 'CP';
 let currentCompanyProy = 'CP';
@@ -655,10 +657,13 @@ let TODAY = new Date();
 let todayInfo = getISOWeek(TODAY);
 let CURRENT_WEEK_KEY = `${todayInfo.isoYear}-W${String(todayInfo.week).padStart(2,'0')}`;
 
-function generateWeeks(count){
+function generateWeeks(count, pastCount){
+  pastCount = pastCount || 0;
   let d = mondayOfISOWeek(todayInfo.isoYear, todayInfo.week);
+  d.setUTCDate(d.getUTCDate() - pastCount*7); // retrocede a la primera semana pasada que se quiera mostrar
   const list = [];
-  for(let i=0;i<count;i++){
+  const total = count + pastCount;
+  for(let i=0;i<total;i++){
     const info = isoWeekOfUTCAnchor(d);
     const start = new Date(d);
     const end = new Date(d); end.setUTCDate(end.getUTCDate()+6);
@@ -727,7 +732,7 @@ function getEffectiveRate(weekKey){
   return isNaN(n)? null : n;
 }
 function recalcularTasasSemanales(){
-  const weeks = generateWeeks(weeksCountCaptura);
+  const weeks = generateWeeks(weeksCountCaptura, weeksPastCaptura);
   let actualizadas=0, sinDatoDiario=0;
   weeks.forEach(w=>{
     const daily = weekAvgRate(w);
@@ -880,7 +885,7 @@ function renderBancos(){
 }
 
 function renderCapturaTable(){
-  const weeks = generateWeeks(weeksCountCaptura);
+  const weeks = generateWeeks(weeksCountCaptura, weeksPastCaptura);
   const conceptos = CONCEPTS[currentCompanyCap][currentDept] || [];
   const table = document.getElementById('capturaTable');
   table.innerHTML='';
@@ -892,7 +897,8 @@ function renderCapturaTable(){
     const th = document.createElement('th');
     th.className = closed? 'col-closed':'col-open';
     const isClosedForThis = isClosed(currentCompanyCap,currentDept,w.key);
-    th.innerHTML = `S${w.week}·${w.isoYear}<br><span style="font-weight:400;font-size:10px;">${fmtDateShort(w.start)}–${fmtDateShort(w.end)}</span>` +
+    const esHoy = w.key === CURRENT_WEEK_KEY;
+    th.innerHTML = `S${w.week}·${w.isoYear}${esHoy?' <span style="color:var(--amber);">(hoy)</span>':''}<br><span style="font-weight:400;font-size:10px;">${fmtDateShort(w.start)}–${fmtDateShort(w.end)}</span>` +
       (closed? `<br><span class="status-chip ${isClosedForThis?'closed':'open'}">${isClosedForThis?'REAL':'VENCIDA'}</span>`:'');
     trh.appendChild(th);
     if(closed && !isClosedForThis){
@@ -933,6 +939,7 @@ function renderCapturaTable(){
   table.appendChild(tbody);
   document.getElementById('capSummary').textContent = `${conceptos.length} conceptos · ${weeks.length} semanas mostradas (desde S${weeks[0].week})`;
 }
+document.getElementById('btnMorePastCap').onclick = ()=>{ weeksPastCaptura+=8; renderCapturaTable(); };
 document.getElementById('btnMoreWeeksCap').onclick = ()=>{ weeksCountCaptura+=10; renderCapturaTable(); };
 
 /* ================= IMPORTAR PLANTILLA (.xlsx) ================= */
@@ -1113,7 +1120,7 @@ function computeCompanySeries(empresa, weeks){
 
 function renderProyEmpresa(){
   renderCompanyTabsProy();
-  const weeks = generateWeeks(weeksCountCaptura);
+  const weeks = generateWeeks(weeksCountCaptura, weeksPastCaptura);
   const series = computeCompanySeries(currentCompanyProy, weeks);
   const cur = currentCurProy;
   const table = document.getElementById('proyEmpresaTable');
@@ -1222,7 +1229,7 @@ document.getElementById('currencyTabsCons').addEventListener('click',(e)=>{
   renderConsolidado();
 });
 function renderConsolidado(){
-  const weeks = generateWeeks(weeksCountCaptura);
+  const weeks = generateWeeks(weeksCountCaptura, weeksPastCaptura);
   const cur = currentCurCons;
   const allSeries = {};
   EMPRESAS.forEach(e=>{ allSeries[e] = computeCompanySeries(e, weeks); });
@@ -1330,7 +1337,7 @@ document.getElementById('btnRecalcularTC').onclick = ()=>{
 function renderTC(){
   const dateEl = document.getElementById('tcDateInput');
   if(!dateEl.value) dateEl.value = isoDateStr(TODAY);
-  const weeks = generateWeeks(weeksCountCaptura);
+  const weeks = generateWeeks(weeksCountCaptura, weeksPastCaptura);
   const table = document.getElementById('tcTable');
   table.innerHTML='';
   const thead=document.createElement('thead');
