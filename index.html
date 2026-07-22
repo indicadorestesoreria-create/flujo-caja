@@ -948,16 +948,21 @@ function normConcept(s){ return String(s||'').trim().toUpperCase().replace(/\s+/
 // Núcleo de la importación: recibe los bytes del .xlsx (venga de disco o de Drive) y los aplica.
 async function importDeptWorkbookBytes(arrayBuffer, statusEl){
   const wb = XLSX.read(arrayBuffer, {type:'array'});
-  let totalCells=0, totalConceptsMatched=0, empresasEncontradas=[];
+  let totalCells=0, totalConceptsMatched=0, empresasEncontradas=[], hojasSinClave=[];
   for(const empresa of EMPRESAS){
     if(!wb.SheetNames.includes(empresa)) continue;
     empresasEncontradas.push(empresa);
     const sheet = wb.Sheets[empresa];
     const aoa = XLSX.utils.sheet_to_json(sheet, {header:1, defval:null, raw:true});
-    const weekRow = aoa[3] || [];               // fila 4 (índice 3) = clave_semana
+    // Se busca la fila que trae "clave_semana" en la columna A, en vez de asumir un número de fila fijo
+    // (las hojas no siempre se numeran igual según dónde empiecen los datos).
+    const weekRowIdx = aoa.findIndex(row => row && String(row[0]||'').trim().toLowerCase()==='clave_semana');
+    if(weekRowIdx === -1){ hojasSinClave.push(empresa); continue; }
+    const weekRow = aoa[weekRowIdx];
+    const conceptStartIdx = weekRowIdx + 2; // una fila de encabezado visible entre "clave_semana" y los conceptos
     const conceptos = CONCEPTS[empresa][currentDept] || [];
     const conceptIndex = {}; conceptos.forEach(c=>conceptIndex[normConcept(c)]=c);
-    for(let r=5; r<aoa.length; r++){             // desde fila 6 (índice 5)
+    for(let r=conceptStartIdx; r<aoa.length; r++){
       const row = aoa[r];
       if(!row || row[0]===null || row[0]===undefined || String(row[0]).trim()==='') continue;
       const match = conceptIndex[normConcept(row[0])];
@@ -976,6 +981,8 @@ async function importDeptWorkbookBytes(arrayBuffer, statusEl){
   await saveEstimates();
   if(empresasEncontradas.length===0){
     statusEl.textContent = 'No se encontraron pestañas CP/WF/TB/SV en el archivo. Verifique que sea la plantilla correcta para este departamento.';
+  } else if(hojasSinClave.length===empresasEncontradas.length){
+    statusEl.textContent = 'No se encontró la fila técnica "clave_semana" en ninguna pestaña — puede que el archivo se haya guardado/exportado de una forma que borró esa fila oculta. Pruebe reabrir la plantilla original y solo editar los montos, sin borrar filas.';
   } else {
     statusEl.textContent = `Importado: ${empresasEncontradas.join(', ')} · ${totalConceptsMatched} conceptos · ${totalCells} valores cargados.`;
     renderCapturaTable();
