@@ -132,6 +132,20 @@
     header.app{ flex-direction:column; align-items:flex-start; }
     main{ padding:14px; }
   }
+  label.btn{ display:inline-block; background:var(--navy); color:#fff; border-radius:6px; padding:8px 14px; font-size:12.5px; font-weight:600; cursor:pointer; }
+  label.btn.accent{ background:var(--accent); } label.btn.small{ padding:5px 10px; font-size:11.5px; }
+  .viz-card{ background:#fff; border:1px solid var(--border); border-radius:10px; padding:14px 16px; margin-bottom:14px; }
+  .viz-h{ font-size:13px; margin:0 0 8px; color:var(--navy); }
+  .viz-legend{ display:flex; gap:16px; font-size:12px; color:var(--text); margin-bottom:6px; }
+  .viz-legend i{ display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:6px; vertical-align:-1px; }
+  .viz-tip{ position:fixed; z-index:99; display:none; background:#fff; border:1px solid var(--border); border-radius:6px; padding:8px 10px; font-size:12px; box-shadow:0 4px 14px rgba(0,0,0,.12); pointer-events:none; line-height:1.5; }
+  .bar-row{ display:flex; align-items:center; gap:8px; margin:5px 0; font-size:12px; }
+  .bar-lbl{ width:190px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .bar-track{ flex:1; background:#EEF1F5; border-radius:4px; height:10px; }
+  .bar-fill{ background:#2a78d6; height:10px; border-radius:4px; }
+  .bar-val{ width:190px; text-align:right; white-space:nowrap; }
+  .grid2{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  @media (max-width:900px){ .grid2{ grid-template-columns:1fr; } .bar-lbl,.bar-val{ width:120px; } }
 </style>
 </head>
 <body>
@@ -150,9 +164,12 @@
 <nav class="tabs">
   <button data-view="drive" class="active">Google Drive</button>
   <button data-view="captura">Captura por Área</button>
+  <button data-view="cierre">Cierre de Semana</button>
   <button data-view="bancos">Disponibilidad Inicial</button>
   <button data-view="empresa">Proyección por Empresa</button>
   <button data-view="consolidado">Consolidado</button>
+  <button data-view="indicadores">Indicadores</button>
+  <button data-view="comparar">Comparar Meses</button>
   <button data-view="tasa">Tasa de Cambio (BCV)</button>
   <button data-view="historico">Histórico</button>
 </nav>
@@ -187,16 +204,22 @@
   <section id="view-captura" class="view">
     <div class="panel">
       <h2>Captura de estimados por departamento</h2>
-      <p class="hint">Cada área completa su plantilla de Excel (una por departamento, con una pestaña por empresa) y la importa aquí. El archivo se procesa completo — las 4 empresas de un solo golpe — y llena la tabla de abajo. También puede editar celdas sueltas directamente en la tabla si necesita un ajuste puntual. La tabla siempre muestra algunas semanas ya vencidas (marcadas "VENCIDA") además de las futuras — haga clic en el encabezado de esa semana para cargarle el dato real y cerrarla; use "← Cargar 8 semanas anteriores" si necesita ir más atrás. <b>Tip:</b> si tiene Google Drive para escritorio instalado y la carpeta "Capturas por área" sincronizada en su computador, el selector de archivo de abajo la va a mostrar como una carpeta normal — puede navegar directo ahí y elegir el archivo que le enviaron.</p>
+      <p class="hint">Cada área completa su plantilla de Excel (una por departamento, con una pestaña por empresa) y la importa aquí. El archivo se procesa completo — las 4 empresas de un solo golpe — y llena la tabla de abajo. También puede editar celdas sueltas directamente en la tabla si necesita un ajuste puntual. La tabla siempre muestra algunas semanas ya vencidas (marcadas "VENCIDA") además de las futuras — haga clic en el encabezado de esa semana para cargarle el dato real y cerrarla; use "← Cargar 8 semanas anteriores" si necesita ir más atrás. <b>Flujo de trabajo:</b> 1) descargue las plantillas con ⬇ (traen las semanas, los clientes y los datos vigentes); 2) cada responsable llena la suya y la deja en "Capturas por área"; 3) pulse <b>Importar todo desde Drive</b> (o suba varios archivos a la vez): la herramienta identifica sola el departamento y arma el flujo proyectado. El cuadro "Estado de carga" muestra quién entregó y qué falta. <b>Tip:</b> si tiene Google Drive para escritorio instalado y la carpeta "Capturas por área" sincronizada en su computador, el selector de archivo de abajo la va a mostrar como una carpeta normal — puede navegar directo ahí y elegir el archivo que le enviaron.</p>
+      <div id="estadoCarga" style="margin-bottom:14px;"></div>
       <div class="subtabs" id="deptTabs"></div>
       <div class="toolbar" id="importBar" style="background:var(--navy-soft); border-radius:8px; padding:10px 14px;">
         <label class="btn accent small" style="cursor:pointer;">
-          Importar plantilla (.xlsx) ↑
-          <input type="file" id="importDeptFile" accept=".xlsx,.xls" style="display:none;">
+          Importar plantillas (.xlsx) ↑
+          <input type="file" id="importDeptFile" accept=".xlsx,.xls" multiple style="display:none;">
         </label>
-        <button class="btn secondary small" id="btnBuscarEnDrive">📁 Buscar en Drive ("Capturas por área")</button>
+        <button class="btn accent small" id="btnImportarTodoDrive">☁ Importar todo desde Drive</button>
+        <button class="btn secondary small" id="btnBuscarEnDrive">📁 Elegir un archivo de Drive</button>
+        <button class="btn secondary small" id="btnTplDept">⬇ Plantilla de este departamento</button>
+        <button class="btn secondary small" id="btnTplAll">⬇ Las 5 plantillas</button>
+        <button class="btn secondary small btnUndoImport" disabled>↶ Deshacer última importación</button>
         <span id="importStatus" style="font-size:12px;color:var(--text-mute);"></span>
       </div>
+      <div id="importReport"></div>
       <div id="drivePickerList" style="margin-bottom:10px;"></div>
       <div class="subtabs company" id="companyTabsCaptura"></div>
       <div class="toolbar">
@@ -227,6 +250,7 @@
         <button data-cur="bs" class="active">Bolívares (Bs)</button>
         <button data-cur="usd">Dólares (US$)</button>
       </div>
+      <div class="toolbar"><button class="btn small btnExportFlujo">⬇ Exportar flujo a Excel (con fórmulas)</button></div>
       <div class="kpi-row" id="kpiEmpresa"></div>
       <div class="table-scroll"><table class="grid" id="proyEmpresaTable"></table></div>
       <h2 style="margin-top:18px;">Resumen mensual</h2>
@@ -243,10 +267,67 @@
         <button data-cur="bs" class="active">Bolívares (Bs)</button>
         <button data-cur="usd">Dólares (US$)</button>
       </div>
+      <div class="toolbar"><button class="btn small btnExportFlujo">⬇ Exportar flujo a Excel (con fórmulas)</button></div>
       <div class="kpi-row" id="kpiConsolidado"></div>
       <div class="table-scroll"><table class="grid" id="consTable"></table></div>
       <h2 style="margin-top:18px;">Resumen mensual consolidado</h2>
       <div class="table-scroll"><table class="grid" id="consMonthly"></table></div>
+    </div>
+  </section>
+
+  <!-- ============ CIERRE DE SEMANA ============ -->
+  <section id="view-cierre" class="view">
+    <div class="panel">
+      <h2>Cierre de semana — cargar los reales</h2>
+      <p class="hint"><b>Proceso:</b> 1) elija la semana vencida; 2) descargue las plantillas de reales (traen el estimado y una columna "Real" amarilla); 3) cada responsable la completa y la deja en "Capturas por área"; 4) importe: la semana se cierra por empresa y departamento y la desviación queda en el Histórico, en este cuadro y en Indicadores. Una pestaña sin ningún valor en "Real" no cierra esa empresa; un concepto en blanco dentro de una pestaña con datos se toma como 0 y se avisa. Solo se pueden cerrar semanas ya terminadas.</p>
+      <div class="toolbar">
+        <label style="font-size:12.5px;">Semana a cerrar: <select id="cierreWeekSel" style="font-size:12.5px;padding:5px 6px;"></select></label>
+        <span id="cierreProgress" style="font-size:12px;color:var(--text-mute);"></span>
+      </div>
+      <div class="toolbar" id="cierreTplBtns"></div>
+      <div class="toolbar" style="background:var(--navy-soft); border-radius:8px; padding:10px 14px;">
+        <label class="btn accent small" style="cursor:pointer;">Importar reales (.xlsx) ↑<input type="file" id="importRealFile" accept=".xlsx,.xls" multiple style="display:none;"></label>
+        <button class="btn accent small" id="btnImportarRealesDrive">☁ Importar todo desde Drive</button>
+        <button class="btn secondary small btnUndoImport" disabled>↶ Deshacer última importación</button>
+        <span id="cierreStatus" style="font-size:12px;color:var(--text-mute);"></span>
+      </div>
+      <div id="cierreReport"></div>
+      <div class="table-scroll"><table class="grid" id="cierreTable"></table></div>
+      <h2 style="margin-top:18px;">Cumplimiento acumulado: estimado vs real</h2>
+      <p class="hint">Suma de todas las semanas cerradas. "Efecto en caja" favorable = más cobros o menos pagos que lo estimado.</p>
+      <div class="table-scroll"><table class="grid" id="cumplTable"></table></div>
+    </div>
+  </section>
+
+  <!-- ============ INDICADORES ============ -->
+  <section id="view-indicadores" class="view">
+    <div class="panel">
+      <h2>Indicadores de liquidez y gestión</h2>
+      <p class="hint">Calculados con el mismo flujo proyectado (real en semanas cerradas, estimado en el resto). El "mínimo de seguridad" por empresa se define en la tabla comparativa y alimenta las alertas.</p>
+      <div class="toolbar">
+        <label style="font-size:12.5px;">Alcance: <select id="indScope" style="font-size:12.5px;padding:5px 6px;"><option value="CONS">Consolidado</option><option>CP</option><option>WF</option><option>TB</option><option>SV</option></select></label>
+        <label style="font-size:12.5px;">Horizonte: <select id="indHoriz" style="font-size:12.5px;padding:5px 6px;"><option value="4">4 semanas</option><option value="8">8 semanas</option><option value="13" selected>13 semanas</option><option value="26">26 semanas</option></select></label>
+        <label style="font-size:12.5px;">Moneda: <select id="indCur" style="font-size:12.5px;padding:5px 6px;"><option value="bs">Bs</option><option value="usd">US$ (tasa BCV semanal)</option></select></label>
+        <button class="btn small btnExportFlujo">⬇ Exportar flujo a Excel</button>
+      </div>
+      <div id="indAlertas"></div>
+      <div class="kpi-row" id="indKpis"></div>
+      <div class="viz-card"><h3 class="viz-h" id="indChart1Title"></h3><div id="indChart1"></div></div>
+      <div class="viz-card"><h3 class="viz-h" id="indChart2Title"></h3>
+        <div class="viz-legend"><span><i style="background:#2a78d6"></i>Cobros (CxC)</span><span><i style="background:#eb6834"></i>Pagos (Nómina + CxP + Impuestos)</span></div>
+        <div id="indChart2"></div></div>
+      <div class="viz-card"><h3 class="viz-h">Comparativo por empresa</h3><div class="table-scroll" id="indCompar"></div></div>
+      <div class="grid2"><div class="viz-card" id="indConc"></div><div class="viz-card" id="indComp"></div></div>
+      <details><summary style="cursor:pointer;font-size:12.5px;color:var(--navy);font-weight:700;margin:8px 0;">Ver tabla semanal (los mismos datos de los gráficos)</summary>
+        <div class="table-scroll"><table class="grid" id="indTable"></table></div></details>
+    </div>
+  </section>
+
+  <section id="view-comparar" class="view">
+    <div class="panel">
+      <h2>Comparar meses con reexpresión monetaria</h2>
+      <p class="hint">Compara el flujo de caja mes contra mes quitando el efecto de la devaluación e inflación: en US$ a tasa BCV, o en bolívares constantes de un mes base. Usa el mismo flujo del resto de la herramienta (real en semanas cerradas, estimado en el resto).</p>
+      <div id="cmpRoot"></div>
     </div>
   </section>
 
@@ -304,7 +385,7 @@
 
 </main>
 
-<footer class="app">Flujo de Caja Semanal · CP · WF · TB · SV — datos guardados en este enlace, compártalo solo con el equipo autorizado</footer>
+<footer class="app">Flujo de Caja Semanal · CP · WF · TB · SV — datos guardados en Google Drive · versión 2026-11-02 · v4 · compártalo solo con el equipo autorizado</footer>
 
 <!-- Modal: cerrar semana / cargar real -->
 <div class="modal-bg" id="modalBg">
@@ -342,11 +423,11 @@ const NOMINA_FULL = ['NÓMINA ADMINISTRATIVA','NÓMINA PLATA','CT ADMINISTRATIVO
   'DESTAJO / EVENTUAL','IVSS','INCES','LPH','CT OPERATIVOS','INCENTIVOS','MOVILIZACIÓN OPERATIVA (asig. extra)','GASTOS VARIOS'];
 const CXP_FULL = ['PROVEEDORES','ELECTRICIDAD','MATERIALES (POP)','UNIFORMES (OPERATIVO)','BOTAS - UNIFORME','OTROS GASTOS','VIATICOS AL MES'];
 const IMPUESTOS_CP = ['RETENCIONES DE ISLR','IVA','IVA PROVEEDORES','ANTICIPO ISLR','DPP','IGTF','PATENTES','FONACIT','OTROS IMPUESTOS','PROVISIONES'];
-const IMPUESTOS_STD = ['RETENCIONES DE ISLR','IVA','IVA PROVEEDORES','ANTICIPO ISLR','DPP','PATENTE','FONACIT','OTROS IMPUESTOS','PROVISIONES'];
-const TESORERIA_CP = ['TRASPASOS INGRESOS','REINTEGROS REGIONES','TRASPASOS EGRESOS','IGTF','COMISION','GANANCIA CAMBIARIA','AHORROS (DIVISAS-BOLIVARES)','RETIRO DE DIVISAS','APARTADO TRIMESTRAL','COMPRAS VARIAS'];
-const TESORERIA_WF = ['TRASPASOS INGRESOS','TRASPASOS EGRESOS','REINTEGROS','IGTF','COMISION','GANANCIA CAMBIARIA','AHORRO EN DIVISAS','RETIRO DE DIVISAS','APARTADO TRIMESTRAL','COMPRAS VARIAS'];
-const TESORERIA_TB = ['TRASPASOS INGRESOS','TRASPASOS EGRESOS','REINTEGROS','IGTF','COMISION','GANANCIA CAMBIARIA','AHORRO EN DIVISAS','VENTA DE DIVISAS'];
-const TESORERIA_SV = ['TRASPASOS INGRESOS','TRASPASOS EGRESOS','IGTF','COMISION','GANANCIA CAMBIARIA','AHORRO EN DIVISAS','VENTA DE DIVISAS'];
+const IMPUESTOS_STD = ['RETENCIONES DE ISLR','IVA','IVA PROVEEDORES','ANTICIPO ISLR','DPP','IGTF','PATENTE','FONACIT','OTROS IMPUESTOS','PROVISIONES'];
+const TESORERIA_CP = ['TRASPASOS INGRESOS','REINTEGROS REGIONES','TRASPASOS EGRESOS','COMISION','GANANCIA CAMBIARIA','AHORROS (DIVISAS-BOLIVARES)','RETIRO DE DIVISAS','APARTADO TRIMESTRAL','COMPRAS VARIAS'];
+const TESORERIA_WF = ['TRASPASOS INGRESOS','TRASPASOS EGRESOS','REINTEGROS','COMISION','GANANCIA CAMBIARIA','AHORRO EN DIVISAS','RETIRO DE DIVISAS','APARTADO TRIMESTRAL','COMPRAS VARIAS'];
+const TESORERIA_TB = ['TRASPASOS INGRESOS','TRASPASOS EGRESOS','REINTEGROS','COMISION','GANANCIA CAMBIARIA','AHORRO EN DIVISAS','VENTA DE DIVISAS'];
+const TESORERIA_SV = ['TRASPASOS INGRESOS','TRASPASOS EGRESOS','COMISION','GANANCIA CAMBIARIA','AHORRO EN DIVISAS','VENTA DE DIVISAS'];
 
 const CONCEPTS = {
   CP: {
@@ -376,6 +457,16 @@ const CONCEPTS = {
   }
 };
 
+// Signo de cada concepto de Tesorería sobre el saldo en Bs. TODOS los montos se cargan en POSITIVO; la herramienta aplica el signo.
+const TESORERIA_SIGN = {
+  'TRASPASOS INGRESOS':1, 'REINTEGROS REGIONES':1, 'REINTEGROS':1, 'GANANCIA CAMBIARIA':1, 'VENTA DE DIVISAS':1,
+  'TRASPASOS EGRESOS':-1, 'COMISION':-1, 'COMPRAS VARIAS':-1, 'APARTADO TRIMESTRAL':-1,
+  'AHORROS (DIVISAS-BOLIVARES)':-1, 'AHORRO EN DIVISAS':-1, 'RETIRO DE DIVISAS':-1  // retiro: sale del banco (entra a caja en US$)
+};
+function tesSign(dept, concepto){
+  if(dept!=='TESORERIA') return 1;
+  const k = normConcept(concepto); return TESORERIA_SIGN[k]===undefined? 1 : TESORERIA_SIGN[k];
+}
 const OPENING_BALANCE_DEFAULT = {CP:97773973.41, WF:13869037.72, TB:12810595.02, SV:178752.16};
 
 /* ================= GOOGLE DRIVE: AUTH ================= */
@@ -503,6 +594,8 @@ let tcDiario = {};    // tcDiario[yyyy-mm-dd] = rate
 let tcSemanal = {};   // tcSemanal[weekKey] = tasa efectiva usada en toda la proyección (manual o recalculada)
 let openingBalances = {};
 let bankHistory = {}; // bankHistory[empresa][banco][fecha 'YYYY-MM-DD'] = saldo Bs
+let importLog = {};   // importLog[depto | depto|REAL|semana] = {fecha, archivo, tipo, semana, celdas}
+let settings = {minSaldo:{CP:0,WF:0,TB:0,SV:0}, horizonte:13}; // mínimos de seguridad (Bs) y horizonte de indicadores
 const BANK_LIST = ['Provincial','Provincial CBR','Mercantil','Banesco','BVC','Venezuela'];
 
 function emptyState(){
@@ -529,6 +622,10 @@ async function loadStateFromDrive(){
     tcSemanal = s.tcSemanal||{};
     openingBalances = s.openingBalances||{...OPENING_BALANCE_DEFAULT};
     bankHistory = s.bankHistory||{};
+    importLog = s.importLog||{};
+    migrarIGTF();
+    settings = Object.assign({minSaldo:{}, horizonte:13}, s.settings||{});
+    settings.minSaldo = Object.assign({CP:0,WF:0,TB:0,SV:0}, settings.minSaldo||{});
     // Migración desde la versión anterior (un solo saldo "actual" por banco, sin historial por fecha)
     // o inicialización si nunca se ha guardado nada para una empresa.
     const anchorDate = isoDateStr(TODAY);
@@ -547,7 +644,7 @@ async function loadStateFromDrive(){
   }catch(e){ console.error('no se pudo leer el estado de Drive', e); }
 }
 function currentStateObj(){
-  return {estimates, actuals, closedMap, tcDiario, tcSemanal, openingBalances, bankHistory};
+  return {estimates, actuals, closedMap, tcDiario, tcSemanal, openingBalances, bankHistory, importLog, settings};
 }
 // Guardado con "debounce": junta cambios rápidos en una sola escritura a Drive.
 function scheduleSaveToDrive(){
@@ -754,6 +851,9 @@ document.querySelectorAll('nav.tabs button').forEach(btn=>{
     document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
     document.getElementById('view-'+btn.dataset.view).classList.add('active');
     if(btn.dataset.view==='bancos') renderBancos();
+    if(btn.dataset.view==='cierre') renderCierre();
+    if(btn.dataset.view==='indicadores') renderIndicadores();
+    if(btn.dataset.view==='comparar') renderComparar();
     if(btn.dataset.view==='empresa') renderProyEmpresa();
     if(btn.dataset.view==='consolidado') renderConsolidado();
     if(btn.dataset.view==='tasa') renderTC();
@@ -913,7 +1013,7 @@ function renderCapturaTable(){
   const tbody = document.createElement('tbody');
   conceptos.forEach(c=>{
     const tr = document.createElement('tr');
-    const tdc = document.createElement('td'); tdc.className='concept'; tdc.textContent=c; tr.appendChild(tdc);
+    const tdc = document.createElement('td'); tdc.className='concept'; tdc.textContent=signTag(currentDept,c)+c; tr.appendChild(tdc);
     weeks.forEach(w=>{
       const td = document.createElement('td');
       const closed = isWeekClosed_global(w);
@@ -939,102 +1039,432 @@ function renderCapturaTable(){
   });
   table.appendChild(tbody);
   document.getElementById('capSummary').textContent = `${conceptos.length} conceptos · ${weeks.length} semanas mostradas (desde S${weeks[0].week})`;
+  renderEstadoCarga();
 }
 document.getElementById('btnMorePastCap').onclick = ()=>{ weeksPastCaptura+=8; renderCapturaTable(); };
 document.getElementById('btnMoreWeeksCap').onclick = ()=>{ weeksCountCaptura+=10; renderCapturaTable(); };
 
 /* ================= IMPORTAR PLANTILLA (.xlsx) ================= */
-function normConcept(s){ return String(s||'').trim().toUpperCase().replace(/\s+/g,' '); }
+function normConcept(s){ return String(s||'').trim().toUpperCase().replace(/^\([+−-]\)\s*/,'').replace(/\s+/g,' '); }
 
-// Núcleo de la importación: recibe los bytes del .xlsx (venga de disco o de Drive) y los aplica.
-async function importDeptWorkbookBytes(arrayBuffer, statusEl){
-  const wb = XLSX.read(arrayBuffer, {type:'array'});
-  let totalCells=0, totalConceptsMatched=0, empresasEncontradas=[], hojasSinClave=[];
+function signTag(dept, c){ return dept==='TESORERIA'? (tesSign(dept,c)>0? '(+) ' : '(−) ') : ''; }
+// IGTF pasó a cargarse solo en Impuestos: mueve lo ya cargado en Tesorería (si Impuestos ya tenía dato de esa semana, se conserva ese para no duplicar).
+function migrarIGTF(){
+  let n = 0;
+  [estimates, actuals].forEach(map=>EMPRESAS.forEach(e=>{
+    const src = (((map[e]||{}).TESORERIA||{}).IGTF); if(!src) return;
+    map[e].IMPUESTOS = map[e].IMPUESTOS||{}; map[e].IMPUESTOS.IGTF = map[e].IMPUESTOS.IGTF||{};
+    const dst = map[e].IMPUESTOS.IGTF;
+    Object.keys(src).forEach(wk=>{ if(dst[wk]===undefined || dst[wk]===null){ dst[wk] = src[wk]; n++; } });
+    delete map[e].TESORERIA.IGTF;
+  }));
+  return n;
+}
+function escHtml(t){ return String(t).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function listShort(arr, max){ max=max||8; return arr.slice(0,max).map(escHtml).join(', ') + (arr.length>max? ` y ${arr.length-max} más` : ''); }
+const EXCELJS_URL = 'https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js';
+
+function weekObjFromKey(key){
+  const [y,wn] = key.split('-W').map(Number);
+  const start = mondayOfISOWeek(y, wn);
+  const end = new Date(start); end.setUTCDate(end.getUTCDate()+6);
+  return {key, isoYear:y, week:wn, start, end, monthLabel: monthNameEs(start)+' '+start.getUTCFullYear()};
+}
+
+/* ---------- Identificación del archivo ---------- */
+// Marcas técnicas en A1: FC_DEPT:XXX (plantilla de estimados) o FC_REAL:XXX|AAAA-Wnn (plantilla de reales).
+// Plantillas anteriores: se identifican por el título de A2.
+const DEPT_TITLE_MATCH = [['CUENTAS POR PAGAR','CXP'],['CUENTAS POR COBRAR','CXC'],['NÓMINA','NOMINA'],['NOMINA','NOMINA'],
+                          ['TESORERÍA','TESORERIA'],['TESORERIA','TESORERIA'],['IMPUESTOS','IMPUESTOS']];
+function peekWorkbook(bytes){
+  const wb = XLSX.read(bytes, {type:'array'});
+  for(const name of wb.SheetNames){
+    const sh = wb.Sheets[name]; if(!sh) continue;
+    const a1 = String((sh['A1']||{}).v||'');
+    let m = a1.match(/^FC_REAL:([A-Z]+)\|(\d{4}-W\d{2})/);
+    if(m && DEPT_SIGN[m[1]]!==undefined) return {wb, tipo:'REAL', dept:m[1], semana:m[2]};
+    m = a1.match(/^FC_DEPT:([A-Z]+)/);
+    if(m && DEPT_SIGN[m[1]]!==undefined) return {wb, tipo:'EST', dept:m[1], semana:null};
+  }
+  for(const name of wb.SheetNames){
+    const a2 = String(((wb.Sheets[name]||{})['A2']||{}).v||'').toUpperCase();
+    for(const [txt,key] of DEPT_TITLE_MATCH){ if(a2.includes(txt)) return {wb, tipo:'EST', dept:key, semana:null, legacy:true}; }
+  }
+  return {wb, tipo:'EST', dept:null, semana:null};
+}
+
+/* ---------- Aplicar estimados ---------- */
+function applyEstimatesWorkbook(wb, deptKey){
+  const notes = [];
+  const weeksShown = generateWeeks(weeksCountCaptura, weeksPastCaptura);
+  const firstShown = weeksShown[0].key, lastShown = weeksShown[weeksShown.length-1].key;
+  let totalCells=0, totalConceptsMatched=0, closedSkipped=0, nonNumeric=0;
+  const empresasEncontradas=[], hojasSinClave=[], nonNumEx=[];
   for(const empresa of EMPRESAS){
     if(!wb.SheetNames.includes(empresa)) continue;
     empresasEncontradas.push(empresa);
-    const sheet = wb.Sheets[empresa];
-    const aoa = XLSX.utils.sheet_to_json(sheet, {header:1, defval:null, raw:true});
-    // Se busca la fila que trae "clave_semana" en la columna A, en vez de asumir un número de fila fijo
-    // (las hojas no siempre se numeran igual según dónde empiecen los datos).
+    const aoa = XLSX.utils.sheet_to_json(wb.Sheets[empresa], {header:1, defval:null, raw:true});
     const weekRowIdx = aoa.findIndex(row => row && String(row[0]||'').trim().toLowerCase()==='clave_semana');
     if(weekRowIdx === -1){ hojasSinClave.push(empresa); continue; }
     const weekRow = aoa[weekRowIdx];
-    const conceptStartIdx = weekRowIdx + 2; // una fila de encabezado visible entre "clave_semana" y los conceptos
-    const conceptos = CONCEPTS[empresa][currentDept] || [];
+    const conceptos = CONCEPTS[empresa][deptKey] || [];
     const conceptIndex = {}; conceptos.forEach(c=>conceptIndex[normConcept(c)]=c);
-    for(let r=conceptStartIdx; r<aoa.length; r++){
+    const vistos = new Set(), desconocidos = [];
+    const weekKeys = weekRow.slice(1).filter(k=>k).map(k=>String(k).trim()).sort();
+    if(weekKeys.length){
+      const tFirst = weekKeys[0], tLast = weekKeys[weekKeys.length-1];
+      if(tLast < lastShown || tFirst > firstShown)
+        notes.push(`${empresa}: la plantilla cubre ${tFirst} a ${tLast} y la herramienta muestra ${firstShown} a ${lastShown}. Las semanas fuera de la plantilla quedarán sin datos: descargue una plantilla nueva con el botón ⬇.`);
+    }
+    for(let r=weekRowIdx+2; r<aoa.length; r++){
       const row = aoa[r];
       if(!row || row[0]===null || row[0]===undefined || String(row[0]).trim()==='') continue;
-      const match = conceptIndex[normConcept(row[0])];
-      if(!match) continue;
-      totalConceptsMatched++;
+      const label = String(row[0]).trim();
+      if(/^TOTAL/.test(normConcept(label))) continue;
+      const match = conceptIndex[normConcept(label)];
+      if(!match){ desconocidos.push(label); continue; }
+      vistos.add(match); totalConceptsMatched++;
       for(let c=1;c<row.length;c++){
-        const weekKey = weekRow[c];
+        const weekKey = weekRow[c] ? String(weekRow[c]).trim() : '';
         if(!weekKey) continue;
         const val = row[c];
-        if(val===null || val==='' || isNaN(Number(val))) continue;
-        setEstimate(empresa, currentDept, match, String(weekKey).trim(), Number(val));
+        if(val===null || val==='') continue;
+        const num = (typeof val==='number')? val : Number(String(val).trim());
+        if(isNaN(num)){ nonNumeric++; if(nonNumEx.length<5) nonNumEx.push(`${empresa} · ${label} · ${weekKey}: "${val}"`); continue; }
+        if(isClosed(empresa, deptKey, weekKey)){ if(num !== Number(getActual(empresa, deptKey, match, weekKey))) closedSkipped++; continue; }
+        setEstimate(empresa, deptKey, match, weekKey, num);
         totalCells++;
       }
     }
+    if(desconocidos.length) notes.push(`<b>${empresa}</b>: ${desconocidos.length} concepto(s) de la plantilla NO existen en la herramienta y no se importaron: ${listShort(desconocidos)}.${(deptKey==='TESORERIA' && desconocidos.some(x=>normConcept(x)==='IGTF'))? ' <b>El IGTF ahora se carga solo en Impuestos.</b>':''}`);
+    const faltan = conceptos.filter(c=>!vistos.has(c));
+    if(faltan.length) notes.push(`<b>${empresa}</b>: ${faltan.length} concepto(s) de la herramienta no están en la plantilla: ${listShort(faltan)}.${desconocidos.length?' La plantilla parece desactualizada: descargue una nueva con ⬇.':''}`);
   }
-  await saveEstimates();
-  if(empresasEncontradas.length===0){
-    statusEl.textContent = 'No se encontraron pestañas CP/WF/TB/SV en el archivo. Verifique que sea la plantilla correcta para este departamento.';
-  } else if(hojasSinClave.length===empresasEncontradas.length){
-    statusEl.textContent = 'No se encontró la fila técnica "clave_semana" en ninguna pestaña — puede que el archivo se haya guardado/exportado de una forma que borró esa fila oculta. Pruebe reabrir la plantilla original y solo editar los montos, sin borrar filas.';
-  } else {
-    statusEl.textContent = `Importado: ${empresasEncontradas.join(', ')} · ${totalConceptsMatched} conceptos · ${totalCells} valores cargados.`;
-    renderCapturaTable();
-  }
+  if(nonNumeric) notes.push(`${nonNumeric} celda(s) con texto no numérico se ignoraron (ej.: ${nonNumEx.map(escHtml).join(' | ')}). Use números sin separador de miles.`);
+  if(closedSkipped) notes.push(`${closedSkipped} celda(s) de semanas ya cerradas con dato real se omitieron (el estimado histórico no se modifica).`);
+  if(empresasEncontradas.length===0) return {ok:false, notes, summary:'No se encontraron pestañas CP/WF/TB/SV en el archivo.'};
+  if(hojasSinClave.length===empresasEncontradas.length) return {ok:false, notes, summary:'No se encontró la fila técnica "clave_semana" (puede que el archivo haya perdido la fila oculta 4). Reabra la plantilla original y edite solo los montos.'};
+  if(hojasSinClave.length) notes.push(`Pestañas sin la fila "clave_semana" (no importadas): ${hojasSinClave.join(', ')}.`);
+  return {ok:true, notes, cells:totalCells, empresas:empresasEncontradas,
+          summary:`Estimados de ${escHtml(DEPT_LABEL[deptKey])}: ${empresasEncontradas.join(', ')} · ${totalConceptsMatched} conceptos · ${totalCells} valores cargados.`};
 }
 
-document.getElementById('importDeptFile').addEventListener('change', async (e)=>{
-  const file = e.target.files[0];
-  if(!file) return;
-  const statusEl = document.getElementById('importStatus');
+/* ---------- Aplicar reales (cierre de semana) ---------- */
+function applyRealsWorkbook(wb, deptKey, weekKey){
+  const notes = [];
+  const wk = weekObjFromKey(weekKey);
+  if(!(wk.end < stripTime(TODAY))) return {ok:false, notes, summary:`La semana ${weekKey} aún no termina: no se puede cerrar con reales.`};
+  const cerradas = [];
+  for(const empresa of EMPRESAS){
+    if(!wb.SheetNames.includes(empresa)) continue;
+    const aoa = XLSX.utils.sheet_to_json(wb.Sheets[empresa], {header:1, defval:null, raw:true});
+    const idx = aoa.findIndex(row => row && String(row[0]||'').trim().toLowerCase()==='semana_real');
+    if(idx === -1){ notes.push(`${empresa}: no se encontró la fila técnica "semana_real"; pestaña omitida.`); continue; }
+    if(String(aoa[idx][1]||'').trim() !== weekKey){ notes.push(`${empresa}: la pestaña corresponde a otra semana (${escHtml(String(aoa[idx][1]))}); omitida.`); continue; }
+    const conceptos = CONCEPTS[empresa][deptKey] || [];
+    const conceptIndex = {}; conceptos.forEach(c=>conceptIndex[normConcept(c)]=c);
+    const provistos = {}, desconocidos = [], noNum = [];
+    for(let r=idx+2; r<aoa.length; r++){
+      const row = aoa[r];
+      if(!row || row[0]===null || row[0]===undefined || String(row[0]).trim()==='') continue;
+      const label = String(row[0]).trim();
+      if(/^TOTAL/.test(normConcept(label))) continue;
+      const match = conceptIndex[normConcept(label)];
+      if(!match){ desconocidos.push(label); continue; }
+      const val = row[2];
+      if(val===null || val==='') continue;
+      const num = (typeof val==='number')? val : Number(String(val).trim());
+      if(isNaN(num)){ noNum.push(`${label}: "${val}"`); continue; }
+      provistos[match] = num;
+    }
+    const nProv = Object.keys(provistos).length;
+    if(desconocidos.length) notes.push(`<b>${empresa}</b>: conceptos no reconocidos (ignorados): ${listShort(desconocidos)}.`);
+    if(noNum.length) notes.push(`<b>${empresa}</b>: valores no numéricos ignorados: ${listShort(noNum,5)}.`);
+    if(nProv===0){ notes.push(`<b>${empresa}</b>: sin ningún valor en la columna "Real"; <b>no se cerró</b> esta empresa.`); continue; }
+    const enBlanco = conceptos.filter(c=>provistos[c]===undefined);
+    const yaCerrada = isClosed(empresa, deptKey, weekKey);
+    conceptos.forEach(c=> setActual(empresa, deptKey, c, weekKey, provistos[c]!==undefined? provistos[c] : 0));
+    setClosed(empresa, deptKey, weekKey, true);
+    cerradas.push(empresa);
+    if(enBlanco.length) notes.push(`<b>${empresa}</b>: ${enBlanco.length} concepto(s) sin real se tomaron como 0: ${listShort(enBlanco)}.`);
+    if(yaCerrada) notes.push(`<b>${empresa}</b>: la semana ya estaba cerrada; se reemplazaron los reales anteriores.`);
+  }
+  if(!cerradas.length) return {ok:false, notes, summary:`No se cerró ninguna empresa para ${escHtml(DEPT_LABEL[deptKey])} · ${weekKey}.`};
+  return {ok:true, notes, cells:cerradas.length, empresas:cerradas,
+          summary:`Reales de ${escHtml(DEPT_LABEL[deptKey])} · semana ${weekKey}: cerrada para ${cerradas.join(', ')}.`};
+}
+
+/* ---------- Enrutador común (estimados o reales) ---------- */
+async function importAnyWorkbookBytes(bytes, fileName){
+  const res = {fileName, ok:false, notes:[], summary:''};
+  let pk;
+  try{ pk = peekWorkbook(bytes); }catch(e){ res.summary = 'No se pudo leer el archivo (¿es un .xlsx válido?).'; return res; }
+  let dept = pk.dept;
+  if(!dept){ dept = currentDept; res.notes.push(`No se pudo identificar el departamento por el título del archivo; se usó el seleccionado (<b>${escHtml(DEPT_LABEL[currentDept])}</b>). Verifique que sea el correcto.`); }
+  res.dept = dept; res.kind = pk.tipo;
+  const r = (pk.tipo==='REAL') ? applyRealsWorkbook(pk.wb, dept, pk.semana) : applyEstimatesWorkbook(pk.wb, dept);
+  res.ok = r.ok; res.summary = r.summary; res.notes = res.notes.concat(r.notes||[]);
+  if(r.ok){
+    const key = pk.tipo==='REAL' ? `${dept}|REAL|${pk.semana}` : dept;
+    importLog[key] = {fecha:new Date().toISOString(), archivo:fileName||'', tipo:pk.tipo, semana:pk.semana||null, celdas:r.cells||0};
+    if(pk.tipo==='EST'){ currentDept = dept; renderDeptTabs(); }
+  }
+  return res;
+}
+let lastImportBackup = null;
+function beginImportBatch(){
+  lastImportBackup = JSON.stringify({estimates, actuals, closedMap, importLog});
+  document.querySelectorAll('.btnUndoImport').forEach(b=>b.disabled=false);
+}
+function showImportResults(results, statusEl, reportEl){
+  const nOk = results.filter(r=>r.ok).length;
+  statusEl.textContent = `${nOk} de ${results.length} archivo(s) importado(s).`;
+  reportEl.innerHTML = results.map(r=>{
+    const color = !r.ok? 'var(--danger)' : (r.notes.length? 'var(--amber)' : 'var(--accent)');
+    return `<div style="border:1px solid var(--border);border-left:4px solid ${color};border-radius:6px;padding:8px 12px;margin:6px 0;font-size:12.5px;line-height:1.5;background:#fff;">
+      <b>${r.ok?'✓':'✗'} ${escHtml(r.fileName||'')}</b> — ${r.summary}
+      ${r.notes.length? `<ul style="margin:6px 0 0 18px;padding:0;">${r.notes.map(n=>`<li>${n}</li>`).join('')}</ul>`:''}</div>`;
+  }).join('');
+}
+function refreshAfterImport(){
+  renderCapturaTable();
+  if(typeof renderCierre==='function' && document.getElementById('view-cierre').classList.contains('active')) renderCierre();
+}
+async function importFiles(items, statusEl, reportEl){
+  beginImportBatch();
+  const results = [];
+  for(const it of items) results.push(await importAnyWorkbookBytes(it.bytes, it.name));
+  await saveEstimates(); // guarda el estado completo en Drive
+  showImportResults(results, statusEl, reportEl);
+  refreshAfterImport();
+}
+async function importLocalFiles(fileList, statusEl, reportEl){
   statusEl.textContent = 'Procesando...';
   try{
-    const data = await file.arrayBuffer();
-    await importDeptWorkbookBytes(data, statusEl);
-  }catch(err){
-    console.error(err);
-    statusEl.textContent = 'No se pudo leer el archivo. Verifique que sea un .xlsx generado a partir de la plantilla.';
-  }
+    const items = [];
+    for(const f of Array.from(fileList)) items.push({name:f.name, bytes: await f.arrayBuffer()});
+    await importFiles(items, statusEl, reportEl);
+  }catch(err){ console.error(err); statusEl.textContent = 'No se pudo leer el archivo. Verifique que sea un .xlsx generado a partir de la plantilla.'; }
+}
+function undoLastImport(){
+  if(!lastImportBackup) return;
+  const b = JSON.parse(lastImportBackup);
+  estimates = b.estimates; actuals = b.actuals; closedMap = b.closedMap; importLog = b.importLog||{};
+  lastImportBackup = null;
+  document.querySelectorAll('.btnUndoImport').forEach(x=>x.disabled=true);
+  scheduleSaveToDrive();
+  ['importReport','cierreReport'].forEach(id=>{ const el=document.getElementById(id); if(el) el.innerHTML=''; });
+  ['importStatus','cierreStatus'].forEach(id=>{ const el=document.getElementById(id); if(el) el.textContent='Última importación deshecha (datos restaurados).'; });
+  refreshAfterImport();
+}
+document.querySelectorAll('.btnUndoImport').forEach(b=>b.addEventListener('click', undoLastImport));
+document.getElementById('importDeptFile').addEventListener('change', async (e)=>{
+  await importLocalFiles(e.target.files, document.getElementById('importStatus'), document.getElementById('importReport'));
+  e.target.value='';
+});
+document.getElementById('importRealFile').addEventListener('change', async (e)=>{
+  await importLocalFiles(e.target.files, document.getElementById('cierreStatus'), document.getElementById('cierreReport'));
   e.target.value='';
 });
 
-/* ================= IMPORTAR DESDE DRIVE ("Capturas por área") ================= */
-document.getElementById('btnBuscarEnDrive').addEventListener('click', async ()=>{
-  const listEl = document.getElementById('drivePickerList');
-  const statusEl = document.getElementById('importStatus');
+/* ---------- Drive: importar el archivo más reciente de cada tipo ---------- */
+async function driveImportAll(statusEl, reportEl){
   if(!driveReady){ statusEl.textContent = 'Conecte Google Drive primero (pestaña "Google Drive").'; return; }
-  statusEl.textContent = 'Buscando archivos en Drive...';
-  listEl.innerHTML='';
+  statusEl.textContent = `Leyendo "${CARPETA_CAPTURAS}"...`;
+  try{
+    const files = (await driveListFilesInFolder(folderIds.capturas)).filter(f=>/\.xlsx$/i.test(f.name)); // vienen del más reciente al más antiguo
+    const items = [], omitidos = [], vistos = {};
+    for(const f of files){
+      const bytes = await driveDownloadBytes(f.id);
+      let pk; try{ pk = peekWorkbook(bytes); }catch(e){ omitidos.push(`${f.name} (no legible)`); continue; }
+      if(!pk.dept){ omitidos.push(`${f.name} (departamento no identificado)`); continue; }
+      const key = `${pk.tipo}|${pk.dept}|${pk.semana||''}`;
+      if(vistos[key]){ omitidos.push(`${f.name} (hay uno más reciente del mismo tipo)`); continue; }
+      vistos[key] = 1; items.push({name:f.name, bytes});
+    }
+    if(!items.length){ statusEl.textContent = `No hay plantillas válidas en "${CARPETA_CAPTURAS}".`; return; }
+    await importFiles(items, statusEl, reportEl);
+    if(omitidos.length) reportEl.insertAdjacentHTML('beforeend', `<div style="font-size:12px;color:var(--text-mute);margin:6px 0;">Omitidos: ${omitidos.map(escHtml).join(' · ')}</div>`);
+  }catch(err){ console.error(err); statusEl.textContent = 'Error consultando Drive. Verifique la conexión en la pestaña "Google Drive".'; }
+}
+document.getElementById('btnImportarTodoDrive').addEventListener('click', ()=>driveImportAll(document.getElementById('importStatus'), document.getElementById('importReport')));
+document.getElementById('btnImportarRealesDrive').addEventListener('click', ()=>driveImportAll(document.getElementById('cierreStatus'), document.getElementById('cierreReport')));
+document.getElementById('btnBuscarEnDrive').addEventListener('click', async ()=>{
+  const listEl = document.getElementById('drivePickerList'), statusEl = document.getElementById('importStatus'), reportEl = document.getElementById('importReport');
+  if(!driveReady){ statusEl.textContent = 'Conecte Google Drive primero (pestaña "Google Drive").'; return; }
+  statusEl.textContent = 'Buscando archivos en Drive...'; listEl.innerHTML='';
   try{
     const files = await driveListFilesInFolder(folderIds.capturas);
     if(!files.length){ statusEl.textContent = `No hay archivos en "${CARPETA_CAPTURAS}" todavía.`; return; }
     statusEl.textContent = `${files.length} archivo(s) encontrado(s). Elija uno:`;
     files.forEach(f=>{
       const btn = document.createElement('button');
-      btn.className='btn secondary small';
-      btn.style.marginRight='6px'; btn.style.marginBottom='6px';
+      btn.className='btn secondary small'; btn.style.marginRight='6px'; btn.style.marginBottom='6px';
       btn.textContent = `${f.name} (${new Date(f.modifiedTime).toLocaleString('es-VE')})`;
       btn.onclick = async ()=>{
         statusEl.textContent = 'Descargando e importando...';
-        try{
-          const bytes = await driveDownloadBytes(f.id);
-          await importDeptWorkbookBytes(bytes, statusEl);
-          listEl.innerHTML='';
-        }catch(err){ console.error(err); statusEl.textContent = 'No se pudo leer ese archivo desde Drive.'; }
+        try{ const bytes = await driveDownloadBytes(f.id); await importFiles([{name:f.name, bytes}], statusEl, reportEl); listEl.innerHTML=''; }
+        catch(err){ console.error(err); statusEl.textContent = 'No se pudo leer ese archivo desde Drive.'; }
       };
       listEl.appendChild(btn);
     });
-  }catch(err){
-    console.error(err);
-    statusEl.textContent = 'Error consultando Drive. Verifique la conexión en la pestaña "Google Drive".';
-  }
+  }catch(err){ console.error(err); statusEl.textContent = 'Error consultando Drive. Verifique la conexión en la pestaña "Google Drive".'; }
+});
+
+/* ---------- Estado de carga: quién entregó y qué falta ---------- */
+function datosProximas(emp, dept, n){
+  const ws = generateWeeks(n, 0); let cnt = 0;
+  (CONCEPTS[emp][dept]||[]).forEach(c=>ws.forEach(w=>{ const v = getEstimate(emp,dept,c,w.key); if(v!==null && v!==0) cnt++; }));
+  return cnt;
+}
+function renderEstadoCarga(){
+  const el = document.getElementById('estadoCarga'); if(!el) return;
+  const N = 4;
+  let h = `<div style="font-weight:700;color:var(--navy);margin-bottom:6px;font-size:13px;">Estado de carga · próximas ${N} semanas</div>
+    <div class="table-scroll"><table class="grid" style="font-size:12px;"><thead><tr><th class="concept">Departamento</th><th style="text-align:left">Última importación</th>${EMPRESAS.map(e=>`<th>${e}</th>`).join('')}</tr></thead><tbody>`;
+  DEPTS.forEach(d=>{
+    const lg = importLog[d.key];
+    const cuando = lg? `${new Date(lg.fecha).toLocaleString('es-VE')} · ${escHtml(lg.archivo||'')}` : '<span style="color:var(--danger);font-weight:700;">▲ nunca importada</span>';
+    h += `<tr><td class="concept">${d.label}</td><td style="text-align:left;white-space:normal;">${cuando}</td>`;
+    EMPRESAS.forEach(e=>{
+      const n = datosProximas(e, d.key, N);
+      h += n>0? `<td style="color:var(--accent);font-weight:700;">✓ ${n} datos</td>` : `<td style="color:var(--danger);font-weight:700;">▲ sin datos</td>`;
+    });
+    h += '</tr>';
+  });
+  el.innerHTML = h + '</tbody></table></div>';
+}
+
+/* ================= PLANTILLAS DESCARGABLES (siempre alineadas con la herramienta) ================= */
+const TEMPLATE_FILE_NAME = {NOMINA:'Nomina', CXP:'CuentasPorPagar', CXC:'CuentasPorCobrar', TESORERIA:'Tesoreria', IMPUESTOS:'Impuestos'};
+function loadScriptOnce(src){
+  return new Promise((resolve,reject)=>{
+    if(window.ExcelJS) return resolve();
+    const el = document.createElement('script'); el.src = src; el.onload = resolve;
+    el.onerror = ()=>reject(new Error('No se pudo cargar la librería de Excel (ExcelJS).'));
+    document.head.appendChild(el);
+  });
+}
+// Plantilla de ESTIMADOS: ventana de semanas vigente, conceptos vigentes y datos ya cargados.
+async function buildTemplateBuffer(deptKey){
+  await loadScriptOnce(EXCELJS_URL);
+  const weeks = generateWeeks(weeksCountCaptura, weeksPastCaptura);
+  const wb = new ExcelJS.Workbook();
+  const NAVY='FF1F3A5C', GREEN='FF2E7D6B', AMBER='FFFBF1DF', GREYTXT='FF6B7280';
+  EMPRESAS.forEach(emp=>{
+    const ws = wb.addWorksheet(emp, {properties:{tabColor:{argb:NAVY}}});
+    const conceptos = CONCEPTS[emp][deptKey]||[];
+    ws.getCell('A1').value = 'FC_DEPT:'+deptKey;
+    ws.getCell('B1').value = `Generada el ${isoDateStr(TODAY)} · semana actual ${CURRENT_WEEK_KEY} · cubre ${weeks[0].key} a ${weeks[weeks.length-1].key}`;
+    ws.getCell('A1').font = ws.getCell('B1').font = {size:8, color:{argb:GREYTXT}};
+    ws.getCell('A2').value = `PLANTILLA DE ESTIMADOS SEMANALES — ${DEPT_LABEL[deptKey].toUpperCase()} — EMPRESA ${emp}`;
+    ws.getCell('A2').font = {bold:true, size:13, color:{argb:NAVY}};
+    ws.getCell('A3').value = 'Montos en Bs, solo números (sin separador de miles). No inserte ni borre filas ni cambie los nombres de concepto. Semanas en verde = real ya cargado (no se modifican al importar).' + (deptKey==='TESORERIA'? ' TESORERÍA: cargue TODOS los montos en POSITIVO; (+) entra y (−) sale lo aplica la herramienta.' : '');
+    ws.getCell('A3').font = {italic:true, size:9, color:{argb:GREYTXT}};
+    const r4 = ws.getRow(4), r5 = ws.getRow(5);
+    r4.getCell(1).value = 'clave_semana';
+    r5.getCell(1).value = 'Concepto (Bs)';
+    r5.getCell(1).font = {bold:true, color:{argb:'FFFFFFFF'}};
+    r5.getCell(1).fill = {type:'pattern', pattern:'solid', fgColor:{argb:NAVY}};
+    r5.height = 44;
+    weeks.forEach((w,i)=>{
+      const col = i+2;
+      r4.getCell(col).value = w.key;
+      const closedGlobal = isWeekClosed_global(w), closedHere = isClosed(emp,deptKey,w.key);
+      const h = r5.getCell(col);
+      h.value = `S${w.week}·${w.isoYear}\n${fmtDateShort(w.start)}-${fmtDateShort(w.end)}${closedHere?' (REAL)':(closedGlobal?' (VENCIDA)':'')}`;
+      h.font = {bold:true, color:{argb:'FFFFFFFF'}};
+      h.fill = {type:'pattern', pattern:'solid', fgColor:{argb: closedHere? GREEN : NAVY}};
+      h.alignment = {wrapText:true, horizontal:'center', vertical:'middle'};
+      ws.getColumn(col).width = 17;
+    });
+    r4.hidden = true;
+    ws.getColumn(1).width = 42;
+    conceptos.forEach((c,ri)=>{
+      const row = ws.getRow(6+ri);
+      row.getCell(1).value = signTag(deptKey,c)+c;
+      weeks.forEach((w,i)=>{
+        const closedHere = isClosed(emp,deptKey,w.key);
+        const v = closedHere? getActual(emp,deptKey,c,w.key) : getEstimate(emp,deptKey,c,w.key);
+        const cell = row.getCell(i+2);
+        if(v!==null && v!==undefined) cell.value = Number(v);
+        cell.numFmt = '#,##0.00';
+        if(closedHere) cell.fill = {type:'pattern', pattern:'solid', fgColor:{argb:'FFE3F2ED'}};
+        else if(isWeekClosed_global(w)) cell.fill = {type:'pattern', pattern:'solid', fgColor:{argb:AMBER}};
+      });
+    });
+    ws.views = [{state:'frozen', xSplit:1, ySplit:5, showGridLines:false}];
+  });
+  return await wb.xlsx.writeBuffer();
+}
+// Plantilla de REALES de una semana vencida: trae el estimado, una columna "Real" a completar y la diferencia con fórmula.
+async function buildRealTemplateBuffer(deptKey, weekKey){
+  await loadScriptOnce(EXCELJS_URL);
+  const w = weekObjFromKey(weekKey);
+  const wb = new ExcelJS.Workbook();
+  const NAVY='FF1F3A5C', GREYTXT='FF6B7280', INPUT='FFFFF8E1';
+  EMPRESAS.forEach(emp=>{
+    const ws = wb.addWorksheet(emp, {properties:{tabColor:{argb:'FF2E7D6B'}}});
+    const conceptos = CONCEPTS[emp][deptKey]||[];
+    ws.getCell('A1').value = `FC_REAL:${deptKey}|${weekKey}`;
+    ws.getCell('B1').value = `Generada el ${isoDateStr(TODAY)}`;
+    ws.getCell('A1').font = ws.getCell('B1').font = {size:8, color:{argb:GREYTXT}};
+    ws.getCell('A2').value = `REALES — ${DEPT_LABEL[deptKey].toUpperCase()} — EMPRESA ${emp} — SEMANA S${w.week}·${w.isoYear} (${fmtDateShort(w.start)} al ${fmtDateShort(w.end)})`;
+    ws.getCell('A2').font = {bold:true, size:13, color:{argb:NAVY}};
+    ws.getCell('A3').value = 'Complete SOLO la columna "Real" (celdas amarillas), en Bs y con números. Un concepto sin movimiento se deja en 0. Si la pestaña queda totalmente vacía, esa empresa no se cierra.' + (deptKey==='TESORERIA'? ' TESORERÍA: cargue todos los montos en POSITIVO; (+) entra y (−) sale lo aplica la herramienta.' : '');
+    ws.getCell('A3').font = {italic:true, size:9, color:{argb:GREYTXT}};
+    ws.getCell('A4').value = 'semana_real'; ws.getCell('B4').value = weekKey; ws.getRow(4).hidden = true;
+    ['Concepto (Bs)','Estimado','Real','Diferencia (Real − Estimado)','Observación'].forEach((t,i)=>{
+      const c = ws.getRow(5).getCell(i+1); c.value = t;
+      c.font = {bold:true, color:{argb:'FFFFFFFF'}}; c.fill = {type:'pattern', pattern:'solid', fgColor:{argb:NAVY}};
+      c.alignment = {wrapText:true, horizontal: i===0?'left':'center', vertical:'middle'};
+    });
+    ws.getRow(5).height = 32;
+    const closedHere = isClosed(emp,deptKey,weekKey);
+    conceptos.forEach((c,ri)=>{
+      const r = 6+ri, row = ws.getRow(r);
+      row.getCell(1).value = signTag(deptKey,c)+c;
+      const est = getEstimate(emp,deptKey,c,weekKey);
+      row.getCell(2).value = est!==null? Number(est) : 0;
+      const act = closedHere? getActual(emp,deptKey,c,weekKey) : null;
+      if(act!==null && act!==undefined) row.getCell(3).value = Number(act);
+      row.getCell(3).fill = {type:'pattern', pattern:'solid', fgColor:{argb:INPUT}};
+      row.getCell(4).value = {formula:`IF(C${r}="","",C${r}-B${r})`};
+      [2,3,4].forEach(k=>row.getCell(k).numFmt = '#,##0.00;[Red]-#,##0.00;"-"');
+    });
+    const rt = 6+conceptos.length, tot = ws.getRow(rt);
+    tot.getCell(1).value = deptKey==='TESORERIA'? 'TOTAL NETO (con signo)' : 'TOTAL';
+    ['B','C','D'].forEach((L,i)=>{ tot.getCell(i+2).value = {formula: deptKey==='TESORERIA'? (conceptos.map((c,k)=>(tesSign(deptKey,c)>0?'+':'-')+L+(6+k)).join('').replace(/^\+/,'') || '0') : `SUM(${L}6:${L}${rt-1})`}; tot.getCell(i+2).numFmt='#,##0.00;[Red]-#,##0.00;"-"'; });
+    for(let k=1;k<=5;k++){ tot.getCell(k).font = {bold:true}; tot.getCell(k).border = {top:{style:'thin'}}; }
+    ws.getColumn(1).width = 42; [2,3,4].forEach(k=>ws.getColumn(k).width = 20); ws.getColumn(5).width = 40;
+    ws.views = [{state:'frozen', ySplit:5, showGridLines:false}];
+  });
+  return await wb.xlsx.writeBuffer();
+}
+function downloadBuffer(buf, filename){
+  const blob = new Blob([buf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = filename;
+  document.body.appendChild(a); a.click();
+  setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+}
+async function downloadTemplate(deptKey){
+  downloadBuffer(await buildTemplateBuffer(deptKey), `Plantilla_${TEMPLATE_FILE_NAME[deptKey]}_${CURRENT_WEEK_KEY}.xlsx`);
+}
+async function downloadRealTemplate(deptKey, weekKey){
+  downloadBuffer(await buildRealTemplateBuffer(deptKey, weekKey), `Reales_${TEMPLATE_FILE_NAME[deptKey]}_${weekKey}.xlsx`);
+}
+document.getElementById('btnTplDept').addEventListener('click', async ()=>{
+  const st = document.getElementById('importStatus'); st.textContent = 'Generando plantilla...';
+  try{ await downloadTemplate(currentDept); st.textContent = `Plantilla de ${DEPT_LABEL[currentDept]} descargada.`; }
+  catch(e){ console.error(e); st.textContent = 'No se pudo generar la plantilla: '+e.message; }
+});
+document.getElementById('btnTplAll').addEventListener('click', async ()=>{
+  const st = document.getElementById('importStatus');
+  try{
+    for(const d of DEPTS){ st.textContent = `Generando ${d.label}...`; await downloadTemplate(d.key); await new Promise(r=>setTimeout(r,600)); }
+    st.textContent = 'Las 5 plantillas fueron descargadas. Si el navegador pidió permiso para múltiples descargas, acéptelo.';
+  }catch(e){ console.error(e); st.textContent = 'No se pudieron generar las plantillas: '+e.message; }
 });
 
 /* ================= MODAL: cerrar semana ================= */
@@ -1104,26 +1534,53 @@ document.getElementById('currencyTabsProy').addEventListener('click',(e)=>{
   renderProyEmpresa();
 });
 
+// Fecha del saldo bancario más reciente (<= hoy) cargado para la empresa.
+function bankAnchorDate(empresa){
+  let best=null;
+  BANK_LIST.forEach(b=>{ const f=getLatestBankBalance(empresa,b).fecha; if(f && (best===null || f>best)) best=f; });
+  return best;
+}
+// Convención: el saldo bancario cargado es el SALDO INICIAL de la semana que contiene su fecha.
+// Hacia adelante se acumula el neto semanal; hacia atrás (semanas vencidas mostradas) se reconstruye
+// restando el neto, para que el saldo de la semana actual sea siempre el cargado en Disponibilidad Inicial.
 function computeCompanySeries(empresa, weeks){
-  // returns array of {week, sectionTotalsBs:{}, netoBs, saldoIniBs, saldoFinBs, rate}
-  const series=[];
-  let saldoIni = getOpeningBalance(empresa);
-  weeks.forEach(w=>{
+  const n = weeks.length;
+  const base = getOpeningBalance(empresa);
+  const aDate = bankAnchorDate(empresa) || isoDateStr(TODAY);
+  let anchorIdx = weeks.findIndex(w => aDate>=isoDateStr(w.start) && aDate<=isoDateStr(w.end));
+  if(anchorIdx < 0) anchorIdx = 0; // saldo anterior a la ventana mostrada: se ancla en la primera semana
+  const rows = weeks.map(w=>{
     const sectionTotals={};
     DEPTS.forEach(d=>{
       const conceptos = CONCEPTS[empresa][d.key]||[];
       let sum=0;
-      conceptos.forEach(c=>{ sum += valueForWeek(empresa,d.key,c,w.key)||0; });
+      conceptos.forEach(c=>{ sum += tesSign(d.key,c)*(valueForWeek(empresa,d.key,c,w.key)||0); });
       sectionTotals[d.key]=sum;
     });
     let neto=0;
     DEPTS.forEach(d=>{ neto += DEPT_SIGN[d.key]*sectionTotals[d.key]; });
-    const saldoFin = saldoIni+neto;
-    const rate = getEffectiveRate(w.key);
-    series.push({week:w, sectionTotals, neto, saldoIni, saldoFin, rate});
-    saldoIni = saldoFin;
+    return {week:w, sectionTotals, neto, saldoIni:0, saldoFin:0, rate:getEffectiveRate(w.key)};
   });
-  return series;
+  rows[anchorIdx].saldoIni = base;
+  for(let i=anchorIdx;i<n;i++){
+    if(i>anchorIdx) rows[i].saldoIni = rows[i-1].saldoFin;
+    rows[i].saldoFin = rows[i].saldoIni + rows[i].neto;
+  }
+  for(let i=anchorIdx-1;i>=0;i--){
+    rows[i].saldoFin = rows[i+1].saldoIni;
+    rows[i].saldoIni = rows[i].saldoFin - rows[i].neto;
+  }
+  rows.anchorIdx = anchorIdx;
+  rows.anchorDate = aDate;
+  return rows;
+}
+// Texto de aviso sobre la antigüedad del saldo bancario cargado.
+function balanceNoteHTML(fechaStr){
+  const info = isoWeekFromDateString(fechaStr);
+  const key = `${info.isoYear}-W${String(info.week).padStart(2,'0')}`;
+  const f = fmtDateShort(new Date(fechaStr+'T00:00:00Z'));
+  if(key < CURRENT_WEEK_KEY) return `<span style="color:var(--amber);font-weight:700;">⚠ Saldo bancario cargado al ${f} (S${info.week}): anterior a la semana actual. Cargue el saldo actual en "Disponibilidad Inicial".</span>`;
+  return `Saldo bancario cargado al ${f}.`;
 }
 
 function renderProyEmpresa(){
@@ -1168,18 +1625,21 @@ function renderProyEmpresa(){
   // KPI
   const kpiEl = document.getElementById('kpiEmpresa');
   const last = series[series.length-1];
-  const first = series[0];
+  const curIdx = Math.max(0, weeks.findIndex(w=>w.key===CURRENT_WEEK_KEY));
+  const first = series[curIdx];
   kpiEl.innerHTML='';
   const kpis = [
-    ['Saldo actual', convert(first.saldoIni,first.rate)],
+    [`Saldo inicial S${first.week.week} (semana actual)`, convert(first.saldoIni,first.rate)],
     [`Saldo proyectado (S${last.week.week})`, convert(last.saldoFin,last.rate)],
-    ['Variación del periodo', convert(last.saldoFin-first.saldoIni, last.rate)],
+    ['Variación (semana actual → final)', convert(last.saldoFin-first.saldoIni, last.rate)],
   ];
   kpis.forEach(([lbl,val])=>{
     const div=document.createElement('div'); div.className='kpi';
     div.innerHTML = `<div class="lbl">${lbl}</div><div class="val ${val<0?'neg':''}">${cur==='bs'?fmtBs(val):fmtUsd(val)} ${cur==='bs'?'Bs':'US$'}</div>`;
     kpiEl.appendChild(div);
   });
+  { const note=document.createElement('div'); note.style.cssText='font-size:11.5px;color:var(--text-mute);align-self:center;max-width:380px;';
+    note.innerHTML = balanceNoteHTML(series.anchorDate); kpiEl.appendChild(note); }
 
   renderMonthlySummary(series, cur, document.getElementById('proyEmpresaMonthly'));
 }
@@ -1287,17 +1747,21 @@ function renderConsolidado(){
 
   const kpiEl = document.getElementById('kpiConsolidado');
   kpiEl.innerHTML='';
-  const first=combined[0], last=combined[combined.length-1];
+  const curIdxC = Math.max(0, weeks.findIndex(w=>w.key===CURRENT_WEEK_KEY));
+  const first=combined[curIdxC], last=combined[combined.length-1];
   const kpis = [
-    ['Saldo actual consolidado', first.saldoIni],
+    [`Saldo inicial S${first.week.week} (semana actual, consolidado)`, first.saldoIni],
     [`Saldo proyectado (S${last.week.week})`, last.saldoFin],
-    ['Variación del periodo', last.saldoFin-first.saldoIni],
+    ['Variación (semana actual → final)', last.saldoFin-first.saldoIni],
   ];
   kpis.forEach(([lbl,val])=>{
     const div=document.createElement('div'); div.className='kpi';
     div.innerHTML = `<div class="lbl">${lbl}</div><div class="val ${val<0?'neg':''}">${cur==='bs'?fmtBs(val):fmtUsd(val)} ${cur==='bs'?'Bs':'US$'}</div>`;
     kpiEl.appendChild(div);
   });
+  { const oldest = EMPRESAS.map(e=>allSeries[e].anchorDate).sort()[0];
+    const note=document.createElement('div'); note.style.cssText='font-size:11.5px;color:var(--text-mute);align-self:center;max-width:380px;';
+    note.innerHTML = balanceNoteHTML(oldest).replace('Saldo bancario cargado','Saldo bancario más antiguo cargado'); kpiEl.appendChild(note); }
 
   // monthly summary consolidated
   const monthsTable = document.getElementById('consMonthly');
@@ -1677,7 +2141,7 @@ function renderHistorico(){
         const est = getEstimate(empresa,depto,c,weekKey) ?? 0;
         const real = getActual(empresa,depto,c,weekKey);
         if(real===null) return;
-        totalEst+=est; totalReal+=real;
+        totalEst+=est*tesSign(depto,c); totalReal+=real*tesSign(depto,c);
         const tr=document.createElement('tr');
         const diff = real-est;
         tr.innerHTML = `<td class="concept">${c}</td><td>${fmtBs(est)}</td><td>${fmtBs(real)}</td><td class="${diff>=0?'diff-pos':'diff-neg'}">${fmtBs(diff)}</td>`;
@@ -1692,6 +2156,763 @@ function renderHistorico(){
   });
 }
 
+/* ================= CIERRE DE SEMANA ================= */
+let cierreWeekKey = null;
+function weeksAll(){ return generateWeeks(weeksCountCaptura, weeksPastCaptura); }
+function sumConceptos(map, emp, dept, weekKey){ // en Tesorería el total es NETO (aplica el signo de cada concepto)
+  return (CONCEPTS[emp][dept]||[]).reduce((a,c)=> a + tesSign(dept,c)*(map(emp,dept,c,weekKey)||0), 0);
+}
+function renderCierre(){
+  const vencidas = generateWeeks(0, weeksPastCaptura+8).reverse(); // de la más reciente a la más antigua
+  const sel = document.getElementById('cierreWeekSel');
+  if(!cierreWeekKey || !vencidas.some(w=>w.key===cierreWeekKey)) cierreWeekKey = vencidas[0].key;
+  sel.innerHTML = vencidas.map(w=>{
+    const pend = EMPRESAS.reduce((a,e)=>a+DEPTS.filter(d=>!isClosed(e,d.key,w.key)).length,0);
+    return `<option value="${w.key}" ${w.key===cierreWeekKey?'selected':''}>S${w.week}·${w.isoYear} (${fmtDateShort(w.start)}–${fmtDateShort(w.end)}) · ${pend===0?'cerrada':pend+' pendientes'}</option>`;
+  }).join('');
+  sel.onchange = ()=>{ cierreWeekKey = sel.value; renderCierre(); };
+  const w = vencidas.find(x=>x.key===cierreWeekKey);
+
+  // botones de plantillas de reales
+  const tb = document.getElementById('cierreTplBtns'); tb.innerHTML = '<span style="font-size:12px;color:var(--text-mute);">Plantillas de reales de esta semana:</span>';
+  DEPTS.forEach(d=>{
+    const b = document.createElement('button'); b.className='btn secondary small'; b.textContent = `⬇ ${d.label}`;
+    b.onclick = async ()=>{ const st=document.getElementById('cierreStatus'); st.textContent='Generando...'; try{ await downloadRealTemplate(d.key, cierreWeekKey); st.textContent=`Plantilla de reales de ${d.label} descargada.`; }catch(e){ st.textContent='No se pudo generar: '+e.message; } };
+    tb.appendChild(b);
+  });
+  const ball = document.createElement('button'); ball.className='btn accent small'; ball.textContent='⬇ Las 5';
+  ball.onclick = async ()=>{ const st=document.getElementById('cierreStatus'); try{ for(const d of DEPTS){ st.textContent=`Generando ${d.label}...`; await downloadRealTemplate(d.key, cierreWeekKey); await new Promise(r=>setTimeout(r,600)); } st.textContent='Las 5 plantillas de reales fueron descargadas.'; }catch(e){ st.textContent='No se pudieron generar: '+e.message; } };
+  tb.appendChild(ball);
+
+  // matriz departamento × empresa
+  const tbl = document.getElementById('cierreTable'); tbl.innerHTML='';
+  let h = `<thead><tr><th class="concept">Departamento</th>${EMPRESAS.map(e=>`<th>${e}</th>`).join('')}</tr></thead><tbody>`;
+  let cerrados = 0;
+  DEPTS.forEach(d=>{
+    h += `<tr><td class="concept">${d.label}</td>`;
+    EMPRESAS.forEach(e=>{
+      const est = sumConceptos(getEstimate, e, d.key, w.key);
+      if(isClosed(e,d.key,w.key)){
+        cerrados++;
+        const real = sumConceptos(getActual, e, d.key, w.key);
+        const dif = real-est, pct = est? (dif/est*100) : null;
+        const fav = dif*DEPT_SIGN[d.key] >= 0;
+        h += `<td style="white-space:normal;"><span class="status-chip closed" style="background:var(--accent-soft);color:var(--accent);">REAL</span> ${fmtBs(real)}<br><span style="font-size:11px;color:var(--text-mute);">Est. ${fmtBs(est)} · <span class="${fav?'diff-pos':'diff-neg'}">${fav?'▲ favorable':'▼ desfavorable'} ${pct===null?'':pct.toFixed(1)+'%'}</span></span><br><a href="#" data-act="reabrir" data-e="${e}" data-d="${d.key}" style="font-size:11px;">reabrir</a></td>`;
+      } else {
+        h += `<td style="white-space:normal;"><span class="status-chip" style="background:var(--amber-soft);color:var(--amber);">PENDIENTE</span> Est. ${fmtBs(est)}<br><a href="#" data-act="manual" data-e="${e}" data-d="${d.key}" style="font-size:11px;">cargar manual</a></td>`;
+      }
+    });
+    h += '</tr>';
+  });
+  tbl.innerHTML = h + '</tbody>';
+  tbl.querySelectorAll('a[data-act]').forEach(a=>a.onclick = (ev)=>{
+    ev.preventDefault();
+    const e = a.dataset.e, d = a.dataset.d;
+    if(a.dataset.act==='manual') openCloseModal(e, d, w);
+    else if(confirm(`¿Reabrir la semana ${w.week}·${w.isoYear} de ${e} · ${DEPT_LABEL[d]}? Los reales cargados se conservan, pero la semana volverá a mostrarse como pendiente.`)){
+      setClosed(e,d,w.key,false); saveClosedMap(); renderCierre();
+    }
+  });
+  document.getElementById('cierreProgress').textContent = `${cerrados} de ${EMPRESAS.length*DEPTS.length} cierres completos en esta semana`;
+  renderCumplimiento();
+}
+function renderCumplimiento(){
+  const acc = {byDept:{}, byEmp:{}, n:0};
+  Object.keys(closedMap).filter(k=>closedMap[k]).forEach(k=>{
+    const [e,d,wk] = k.split('|');
+    const est = sumConceptos(getEstimate, e, d, wk), real = sumConceptos(getActual, e, d, wk);
+    acc.n++;
+    [['byDept',d],['byEmp',e]].forEach(([m,key])=>{
+      acc[m][key] = acc[m][key]||{est:0, real:0, fav:0};
+      acc[m][key].est += est; acc[m][key].real += real;
+      acc[m][key].fav += (real-est)*DEPT_SIGN[d]; // aporte favorable (+) o desfavorable (−) a la caja
+    });
+  });
+  const el = document.getElementById('cumplTable');
+  if(!acc.n){ el.innerHTML = '<tbody><tr><td class="concept" style="white-space:normal;">Todavía no hay semanas cerradas con reales. Cuando se cierren, aquí verá la desviación acumulada por departamento y empresa.</td></tr></tbody>'; return; }
+  const row = (label,o)=>{ const dif=o.real-o.est, pct=o.est? dif/o.est*100 : null;
+    return `<tr><td class="concept">${label}</td><td>${fmtBs(o.est)}</td><td>${fmtBs(o.real)}</td><td>${fmtBs(dif)}</td><td>${pct===null?'—':pct.toFixed(1)+'%'}</td><td class="${o.fav>=0?'diff-pos':'diff-neg'}">${o.fav>=0?'▲ favorable':'▼ desfavorable'} (${fmtBs(o.fav)})</td></tr>`; };
+  let h = `<thead><tr><th class="concept">Detalle</th><th>Estimado acum.</th><th>Real acum.</th><th>Real − Estimado</th><th>Desv. %</th><th>Efecto en caja</th></tr></thead><tbody>`;
+  h += `<tr class="section-row"><td colspan="6">Por departamento</td></tr>` + DEPTS.filter(d=>acc.byDept[d.key]).map(d=>row(d.label, acc.byDept[d.key])).join('');
+  h += `<tr class="section-row"><td colspan="6">Por empresa</td></tr>` + EMPRESAS.filter(e=>acc.byEmp[e]).map(e=>row(e, acc.byEmp[e])).join('');
+  el.innerHTML = h + '</tbody>';
+}
+
+/* ================= INDICADORES ================= */
+let indScope = 'CONS', indCur = 'bs';
+const VIZ = {s1:'#2a78d6', s2:'#eb6834', grid:'#e3e6ea', axis:'#6B7280', ink:'#1E2430'};
+function wkLbl(w){ return 'S'+w.week+(w.isoYear!==todayInfo.isoYear? '·'+String(w.isoYear).slice(2) : ''); }
+function fmtShort(n){
+  if(n===null || n===undefined || isNaN(n)) return '—';
+  const a = Math.abs(n), sg = n<0? '−':'';
+  if(a>=1e9) return sg+(a/1e9).toFixed(1)+' mil M';
+  if(a>=1e6) return sg+(a/1e6).toFixed(1)+' M';
+  if(a>=1e3) return sg+(a/1e3).toFixed(0)+' K';
+  return sg+a.toFixed(0);
+}
+function seriesFor(scope, weeks){
+  if(scope!=='CONS') return computeCompanySeries(scope, weeks);
+  const all = EMPRESAS.map(e=>computeCompanySeries(e, weeks));
+  return weeks.map((w,i)=>{
+    const sec = {}; DEPTS.forEach(d=> sec[d.key] = all.reduce((a,s)=>a+s[i].sectionTotals[d.key],0));
+    const x = {week:w, sectionTotals:sec, rate:getEffectiveRate(w.key)};
+    x.neto = all.reduce((a,s)=>a+s[i].neto,0); x.saldoIni = all.reduce((a,s)=>a+s[i].saldoIni,0); x.saldoFin = all.reduce((a,s)=>a+s[i].saldoFin,0);
+    return x;
+  });
+}
+function minSaldoOf(scope){ return scope==='CONS'? EMPRESAS.reduce((a,e)=>a+(Number(settings.minSaldo[e])||0),0) : (Number(settings.minSaldo[scope])||0); }
+function computeInd(scope, H, cur){
+  const weeks = weeksAll(), s = seriesFor(scope, weeks);
+  const ci = Math.max(0, weeks.findIndex(w=>w.key===CURRENT_WEEK_KEY));
+  const win = s.slice(ci, Math.min(s.length, ci+H));
+  const cv = (v,x)=> cur==='bs'? v : (x.rate? v/x.rate : null);
+  let missingRate = 0;
+  const rows = win.map(x=>{
+    const pagosBs = x.sectionTotals.NOMINA + x.sectionTotals.CXP + x.sectionTotals.IMPUESTOS;
+    if(cur!=='bs' && !x.rate) missingRate++;
+    return {w:x.week, rate:x.rate, finBs:x.saldoFin, ini:cv(x.saldoIni,x), fin:cv(x.saldoFin,x), cobros:cv(x.sectionTotals.CXC,x), tes:cv(x.sectionTotals.TESORERIA,x),
+            nom:cv(x.sectionTotals.NOMINA,x), cxp:cv(x.sectionTotals.CXP,x), imp:cv(x.sectionTotals.IMPUESTOS,x), pagos:cv(pagosBs,x), neto:cv(x.neto,x)};
+  });
+  const sum = k => rows.reduce((a,r)=>a+(r[k]||0),0);
+  const minRow = rows.reduce((m,r)=> (r.fin!==null && (m===null || r.fin<m.fin))? r : m, null);
+  const cobros = sum('cobros'), pagos = sum('pagos');
+  const minS = minSaldoOf(scope);
+  return {rows, cobros, pagos, tes:sum('tes'), nom:sum('nom'), cxp:sum('cxp'), imp:sum('imp'), neto:sum('neto'), iniActual:rows[0]? rows[0].ini:null, finH:rows.length? rows[rows.length-1].fin:null,
+          minRow, ratio: pagos? cobros/pagos : null, cobertura: (pagos>0 && rows[0] && rows[0].ini!==null)? rows[0].ini/(pagos/rows.length) : null,
+          missingRate, minS, semanasBajoMin: rows.filter(r=>r.finBs < minS).length, anchorDate: s.anchorDate};
+}
+function computeAlertas(H){
+  const out = [], weeks = weeksAll();
+  const ci = Math.max(0, weeks.findIndex(w=>w.key===CURRENT_WEEK_KEY));
+  EMPRESAS.forEach(e=>{
+    const s = computeCompanySeries(e, weeks), win = s.slice(ci, ci+H), minS = Number(settings.minSaldo[e])||0;
+    const bajo = win.find(x=>x.saldoFin < minS);
+    if(bajo) out.push({sev:3, txt:`${e}: saldo proyectado ${bajo.saldoFin<0?'negativo':'bajo el mínimo de seguridad'} desde S${bajo.week.week}·${bajo.week.isoYear} (${fmtBs(bajo.saldoFin)} Bs).`});
+    const fecha = bankAnchorDate(e);
+    if(fecha){ const i = isoWeekFromDateString(fecha); const k = `${i.isoYear}-W${String(i.week).padStart(2,'0')}`;
+      if(k < CURRENT_WEEK_KEY) out.push({sev:2, txt:`${e}: el saldo bancario cargado es del ${fmtDateShort(new Date(fecha+'T00:00:00Z'))} (anterior a la semana actual). Cargue el saldo actual.`}); }
+    DEPTS.forEach(d=>{ if(datosProximas(e,d.key,4)===0 && (CONCEPTS[e][d.key]||[]).length) out.push({sev:1, txt:`${e} · ${d.label}: sin datos en las próximas 4 semanas (¿falta la plantilla?).`}); });
+  });
+  const venc = generateWeeks(0, 8); let pend = 0;
+  venc.forEach(w=>EMPRESAS.forEach(e=>DEPTS.forEach(d=>{ if(!isClosed(e,d.key,w.key)) pend++; })));
+  if(pend) out.push({sev:2, txt:`${pend} cierre(s) de las últimas 8 semanas siguen pendientes (empresa × departamento). Ver "Cierre de Semana".`});
+  const sinTasa = weeks.slice(ci, ci+H).filter(w=>getEffectiveRate(w.key)===null).length;
+  if(sinTasa) out.push({sev:1, txt:`${sinTasa} semana(s) del horizonte no tienen tasa BCV: no se pueden convertir a US$.`});
+  return out.sort((a,b)=>b.sev-a.sev);
+}
+
+/* --- gráficos SVG (sin librerías) --- */
+function chartTip(){ let t=document.getElementById('vizTip'); if(!t){ t=document.createElement('div'); t.id='vizTip'; t.className='viz-tip'; document.body.appendChild(t);} return t; }
+function attachHover(wrap, svg, n, geom, tipFn, xhFn){
+  const tip = chartTip(), xh = svg.querySelector('.xh');
+  svg.addEventListener('mousemove', e=>{
+    const r = svg.getBoundingClientRect(); const xv = (e.clientX-r.left)*geom.W/r.width;
+    const i = Math.max(0, Math.min(n-1, Math.floor((xv-geom.ml)/geom.band)));
+    if(xh){ const cx = geom.ml + geom.band*(i+0.5); xh.setAttribute('x1',cx); xh.setAttribute('x2',cx); xh.style.display='block'; }
+    tip.innerHTML = tipFn(i); tip.style.display='block'; tip.style.left = Math.min(window.innerWidth-260, e.clientX+14)+'px'; tip.style.top = (e.clientY+14)+'px';
+  });
+  svg.addEventListener('mouseleave', ()=>{ tip.style.display='none'; if(xh) xh.style.display='none'; });
+}
+function niceMax(v){ if(v<=0) return 1; const p = Math.pow(10, Math.floor(Math.log10(v))); const m = v/p; return (m<=1?1:m<=2?2:m<=5?5:10)*p; }
+function niceStep(r){ const p = Math.pow(10, Math.floor(Math.log10(r))), m = r/p; return (m<=1?1:m<=2?2:m<=2.5?2.5:m<=5?5:10)*p; }
+function drawAxes(lo, hi, W, H, ml, mr, mt, mb){
+  let s = '';
+  const step = niceStep((hi-lo)/4);
+  for(let v = Math.ceil(lo/step-1e-9)*step; v <= hi+1e-9; v += step){
+    const vv = Math.abs(v) < step*1e-6 ? 0 : v, y = mt + (hi-vv)*(H-mt-mb)/(hi-lo);
+    s += `<line x1="${ml}" x2="${W-mr}" y1="${y}" y2="${y}" stroke="${vv===0? '#9aa3af' : VIZ.grid}" stroke-width="${vv===0?1.2:1}"/>
+          <text x="${ml-8}" y="${y+4}" text-anchor="end" font-size="11" fill="${VIZ.axis}">${fmtShort(vv)}</text>`;
+  }
+  return s;
+}
+function lineChart(el, rows, ref, fmtVal){
+  const W=900, H=250, ml=74, mr=16, mt=14, mb=34, n=rows.length;
+  const vals = rows.map(r=>r.v).filter(v=>v!==null);
+  if(!vals.length){ el.innerHTML = '<div class="empty-state">Sin datos convertibles (falta la tasa BCV).</div>'; return; }
+  let lo = Math.min(0, ...vals, ref||0), hi = Math.max(0, ...vals, ref||0);
+  if(hi===lo) hi = lo+1; const pad = (hi-lo)*0.1; hi += pad; if(lo<0) lo -= pad; { const st = niceStep((hi-lo)/4); hi = Math.ceil(hi/st-1e-9)*st; if(lo<0) lo = Math.floor(lo/st+1e-9)*st; }
+  const band = (W-ml-mr)/n, x = i=> ml + band*(i+0.5), y = v=> mt + (hi-v)*(H-mt-mb)/(hi-lo);
+  let path = ''; rows.forEach((r,i)=>{ if(r.v!==null) path += (path? 'L':'M')+x(i).toFixed(1)+','+y(r.v).toFixed(1)+' '; });
+  const minR = rows.reduce((m,r,i)=> (r.v!==null && (m===null || r.v<m.v))? {v:r.v,i}:m, null);
+  let svg = `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Saldo final proyectado por semana" style="display:block;max-width:100%;">`;
+  svg += drawAxes(lo, hi, W, H, ml, mr, mt, mb);
+  if(ref){ svg += `<line x1="${ml}" x2="${W-mr}" y1="${y(ref)}" y2="${y(ref)}" stroke="${VIZ.s2}" stroke-width="1.5" stroke-dasharray="5 4"/><text x="${W-mr}" y="${y(ref)-5}" text-anchor="end" font-size="11" fill="${VIZ.ink}">Mínimo de seguridad</text>`; }
+  const step = Math.ceil(n/12);
+  rows.forEach((r,i)=>{ if(i%step===0) svg += `<text x="${x(i)}" y="${H-12}" text-anchor="middle" font-size="11" fill="${VIZ.axis}">${r.label}</text>`; });
+  svg += `<path d="${path}" fill="none" stroke="${VIZ.s1}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+  if(minR) svg += `<circle cx="${x(minR.i)}" cy="${y(minR.v)}" r="5" fill="${VIZ.s1}" stroke="#fff" stroke-width="2"/><text x="${x(minR.i)}" y="${y(minR.v)+(minR.v<0?18:-10)}" text-anchor="middle" font-size="11" font-weight="700" fill="${VIZ.ink}">Mín. ${fmtShort(minR.v)}</text>`;
+  svg += `<line class="xh" y1="${mt}" y2="${H-mb}" stroke="#9aa3af" stroke-width="1" style="display:none"/></svg>`;
+  el.innerHTML = svg;
+  attachHover(el, el.querySelector('svg'), n, {W,ml,band}, i=>`<b>${rows[i].label}</b><br>Saldo final: ${rows[i].v===null?'—':fmtVal(rows[i].v)}`);
+}
+function barsChart(el, rows, fmtVal){
+  const W=900, H=250, ml=74, mr=16, mt=14, mb=34, n=rows.length;
+  const mx = Math.max(1, ...rows.map(r=>Math.max(r.a||0, r.b||0))), stp = niceStep(mx/4), hi = Math.ceil(mx/stp-1e-9)*stp;
+  const band = (W-ml-mr)/n, bw = Math.max(3, Math.min(18, (band-8)/2)), y = v=> mt + (hi-v)*(H-mt-mb)/hi;
+  let svg = `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Cobros y pagos por semana" style="display:block;max-width:100%;">` + drawAxes(0, hi, W, H, ml, mr, mt, mb);
+  const step = Math.ceil(n/12);
+  rows.forEach((r,i)=>{
+    const cx = ml + band*(i+0.5);
+    if(r.a) svg += `<rect x="${cx-bw-1}" y="${y(r.a)}" width="${bw}" height="${y(0)-y(r.a)}" rx="2" fill="${VIZ.s1}"/>`;
+    if(r.b) svg += `<rect x="${cx+1}" y="${y(r.b)}" width="${bw}" height="${y(0)-y(r.b)}" rx="2" fill="${VIZ.s2}"/>`;
+    if(i%step===0) svg += `<text x="${cx}" y="${H-12}" text-anchor="middle" font-size="11" fill="${VIZ.axis}">${r.label}</text>`;
+  });
+  svg += `<line class="xh" y1="${mt}" y2="${H-mb}" stroke="#9aa3af" stroke-width="1" style="display:none"/></svg>`;
+  el.innerHTML = svg;
+  attachHover(el, el.querySelector('svg'), n, {W,ml,band}, i=>`<b>${rows[i].label}</b><br><span style="color:${VIZ.s1}">■</span> Cobros: ${fmtVal(rows[i].a||0)}<br><span style="color:${VIZ.s2}">■</span> Pagos: ${fmtVal(rows[i].b||0)}`);
+}
+function barList(items, total, fmtVal){
+  if(!items.length || !total) return '<div class="empty-state" style="padding:12px;">Sin datos en el horizonte.</div>';
+  return items.map(it=>`<div class="bar-row"><div class="bar-lbl" title="${escHtml(it.name)}">${escHtml(it.name)}</div><div class="bar-track"><div class="bar-fill" style="width:${Math.max(1,it.v/total*100).toFixed(1)}%"></div></div><div class="bar-val">${fmtVal(it.v)} <span style="color:var(--text-mute)">(${(it.v/total*100).toFixed(0)}%)</span></div></div>`).join('');
+}
+function renderIndicadores(){
+  const hSel = document.getElementById('indHoriz');
+  if(!renderIndicadores._init){ hSel.value = String(settings.horizonte||13); renderIndicadores._init = true; }
+  const H = Number(hSel.value) || 13;
+  const scopeSel = document.getElementById('indScope'); indScope = scopeSel.value || 'CONS';
+  indCur = document.getElementById('indCur').value || 'bs';
+  const cur = indCur, unit = cur==='bs'? 'Bs':'US$', fv = v=> v===null? '—' : (cur==='bs'? fmtBs(v) : fmtUsd(v));
+  const D = computeInd(indScope, H, cur);
+  const scopeName = indScope==='CONS'? 'Consolidado (4 empresas)' : indScope;
+
+  // alertas
+  const al = computeAlertas(H), icon = {3:'▲ Crítico', 2:'● Atención', 1:'○ Aviso'};
+  document.getElementById('indAlertas').innerHTML = al.length
+    ? `<div class="panel" style="border-left:4px solid var(--amber);margin-bottom:14px;"><b style="color:var(--navy);">Alertas (${al.length})</b><ul style="margin:6px 0 0 18px;padding:0;font-size:12.5px;line-height:1.6;">${al.map(a=>`<li><b style="color:${a.sev===3?'var(--danger)':a.sev===2?'var(--amber)':'var(--text-mute)'}">${icon[a.sev]}</b> ${escHtml(a.txt)}</li>`).join('')}</ul></div>`
+    : `<div class="panel" style="border-left:4px solid var(--accent);margin-bottom:14px;"><b style="color:var(--accent);">✓ Sin alertas</b> <span style="font-size:12.5px;color:var(--text-mute);">en el horizonte de ${H} semanas.</span></div>`;
+
+  // KPIs
+  const k = [
+    [`Saldo inicial semana actual`, fv(D.iniActual)+' '+unit, D.iniActual<0],
+    [`Saldo final a ${H} semanas`, fv(D.finH)+' '+unit, D.finH<0],
+    [`Saldo mínimo proyectado${D.minRow? ' (S'+D.minRow.w.week+')':''}`, (D.minRow? fv(D.minRow.fin):'—')+' '+unit, D.minRow && D.minRow.fin<0],
+    [`Cobros (CxC) a ${H} sem.`, fv(D.cobros)+' '+unit, false],
+    [`Pagos (Nómina+CxP+Imp.) a ${H} sem.`, fv(D.pagos)+' '+unit, false],
+    [`Cobros / pagos`, D.ratio===null? '—' : D.ratio.toFixed(2)+'×', D.ratio!==null && D.ratio<1],
+    [`Cobertura de caja`, D.cobertura===null? '—' : D.cobertura.toFixed(1)+' semanas de pagos', D.cobertura!==null && D.cobertura<2],
+    [`Semanas bajo el mínimo`, `${D.semanasBajoMin} de ${D.rows.length}`, D.semanasBajoMin>0],
+  ];
+  document.getElementById('indKpis').innerHTML = k.map(([l,v,neg])=>`<div class="kpi"><div class="lbl">${l}</div><div class="val ${neg?'neg':''}" style="font-size:16px;">${v}</div></div>`).join('')
+    + (D.missingRate? `<div style="font-size:11.5px;color:var(--amber);align-self:center;">⚠ ${D.missingRate} semana(s) sin tasa BCV: los totales en US$ las excluyen.</div>` : '')
+    + (D.anchorDate? `<div style="font-size:11.5px;color:var(--text-mute);align-self:center;max-width:340px;">${balanceNoteHTML(D.anchorDate)}</div>` : '');
+
+  // gráficos
+  document.getElementById('indChart1Title').textContent = `Saldo final proyectado — ${scopeName} (${unit})`;
+  lineChart(document.getElementById('indChart1'), D.rows.map(r=>({label:wkLbl(r.w), v:r.fin})), (cur==='bs' && D.minS)? D.minS : 0, fv);
+  document.getElementById('indChart2Title').textContent = `Cobros vs pagos por semana — ${scopeName} (${unit})`;
+  barsChart(document.getElementById('indChart2'), D.rows.map(r=>({label:wkLbl(r.w), a:r.cobros, b:r.pagos})), fv);
+
+  // comparativo por empresa
+  const scopes = ['CONS'].concat(EMPRESAS);
+  let h = `<table class="grid" style="font-size:12px;"><thead><tr><th class="concept">Empresa</th><th>Saldo inicial</th><th>Saldo mínimo (semana)</th><th>Saldo final</th><th>Cobros / pagos</th><th>Cobertura (sem.)</th><th>Mínimo de seguridad (Bs)</th><th>Sem. bajo mínimo</th></tr></thead><tbody>`;
+  scopes.forEach(sc=>{
+    const X = computeInd(sc, H, cur);
+    h += `<tr class="${sc==='CONS'?'subtotal-row':''}"><td class="concept">${sc==='CONS'?'Consolidado':sc}</td><td>${fv(X.iniActual)}</td><td>${X.minRow? fv(X.minRow.fin)+' (S'+X.minRow.w.week+')':'—'}</td><td>${fv(X.finH)}</td><td>${X.ratio===null?'—':X.ratio.toFixed(2)+'×'}</td><td>${X.cobertura===null?'—':X.cobertura.toFixed(1)}</td>`;
+    h += sc==='CONS'? `<td>${fmtBs(X.minS)}</td>` : `<td><input class="cell-input" type="number" step="1" data-min="${sc}" value="${Number(settings.minSaldo[sc])||0}" style="width:120px;border-color:var(--border);"></td>`;
+    h += `<td class="${X.semanasBajoMin? 'diff-neg':''}">${X.semanasBajoMin? '▲ ':''}${X.semanasBajoMin}</td></tr>`;
+  });
+  const cmp = document.getElementById('indCompar'); cmp.innerHTML = h + '</tbody></table>';
+  cmp.querySelectorAll('input[data-min]').forEach(inp=>inp.addEventListener('change', ()=>{ settings.minSaldo[inp.dataset.min] = Number(inp.value)||0; scheduleSaveToDrive(); renderIndicadores(); }));
+
+  // concentración de cobranza y composición de pagos
+  const weeks = weeksAll(), ci = Math.max(0, weeks.findIndex(w=>w.key===CURRENT_WEEK_KEY)), wk = weeks.slice(ci, ci+H);
+  const cli = {};
+  (indScope==='CONS'? EMPRESAS : [indScope]).forEach(e=>(CONCEPTS[e].CXC||[]).forEach(c=>{
+    const v = wk.reduce((a,w)=>{ const r=getEffectiveRate(w.key); const x=valueForWeek(e,'CXC',c,w.key)||0; return a + (cur==='bs'? x : (r? x/r : 0)); },0);
+    if(v) cli[(indScope==='CONS'? e+' · ':'')+c] = v;
+  }));
+  const top = Object.entries(cli).map(([name,v])=>({name,v})).sort((a,b)=>b.v-a.v);
+  const totCli = top.reduce((a,x)=>a+x.v,0), top3 = top.slice(0,3).reduce((a,x)=>a+x.v,0);
+  document.getElementById('indConc').innerHTML = `<h3 class="viz-h">Concentración de la cobranza (${H} sem.)</h3>`+ (top.length? `<div style="font-size:12px;color:var(--text-mute);margin-bottom:6px;">Los 3 primeros clientes representan el <b style="color:var(--text);">${(top3/totCli*100).toFixed(0)}%</b> de los cobros proyectados.</div>`:'') + barList(top.slice(0,8), totCli, fv);
+  const comp = [{name:'Nómina',v:D.nom},{name:'Cuentas por pagar',v:D.cxp},{name:'Impuestos',v:D.imp}].filter(x=>x.v>0);
+  document.getElementById('indComp').innerHTML = `<h3 class="viz-h">Composición de los pagos (${H} sem.)</h3>` + barList(comp, D.pagos, fv);
+
+  // tabla accesible
+  const tt = document.getElementById('indTable');
+  tt.innerHTML = `<thead><tr><th class="concept">Semana</th><th>Saldo inicial</th><th>Cobros</th><th>Tesorería</th><th>Nómina</th><th>CxP</th><th>Impuestos</th><th>Neto</th><th>Saldo final</th></tr></thead><tbody>` +
+    D.rows.map(r=>`<tr><td class="concept">S${r.w.week}·${r.w.isoYear} (${fmtDateShort(r.w.start)})</td><td>${fv(r.ini)}</td><td>${fv(r.cobros)}</td><td>${fv(r.tes)}</td><td>${fv(r.nom)}</td><td>${fv(r.cxp)}</td><td>${fv(r.imp)}</td><td>${fv(r.neto)}</td><td>${fv(r.fin)}</td></tr>`).join('') + '</tbody>';
+}
+['indScope','indHoriz','indCur'].forEach(id=>document.getElementById(id).addEventListener('change', ()=>{ if(id==='indHoriz'){ settings.horizonte = Number(document.getElementById('indHoriz').value)||13; scheduleSaveToDrive(); } renderIndicadores(); }));
+
+/* ================= EXPORTAR FLUJO PROYECTADO A EXCEL (con fórmulas) ================= */
+function colL(n){ let s=''; while(n>0){ const m=(n-1)%26; s=String.fromCharCode(65+m)+s; n=Math.floor((n-1)/26); } return s; }
+const EXP_ORDER = ['CXC','TESORERIA','NOMINA','CXP','IMPUESTOS'];
+const EXP_LABEL = {CXC:'(+) COBROS — CUENTAS POR COBRAR', TESORERIA:'(+/−) TESORERÍA / BANCO (neto)', NOMINA:'(−) NÓMINA', CXP:'(−) CUENTAS POR PAGAR', IMPUESTOS:'(−) IMPUESTOS'};
+const FMT_BS = '#,##0;[Red](#,##0);"–"';
+
+// opts.cache=false => las fórmulas se escriben sin resultado precalculado (lo usan las pruebas para recalcular con LibreOffice)
+async function buildFlujoWorkbook(opts){
+  opts = opts || {};
+  const cache = opts.cache!==false;
+  const H = opts.horizonte || settings.horizonte || 13;
+  await loadScriptOnce(EXCELJS_URL);
+  const weeks = weeksAll(), n = weeks.length, lastCol = colL(n+1);
+  const ci = Math.max(0, weeks.findIndex(w=>w.key===CURRENT_WEEK_KEY));
+  const hEnd = Math.min(n-1, ci+H-1);
+  const ser = {}; EMPRESAS.forEach(e=>ser[e] = computeCompanySeries(e, weeks));
+  const cons = seriesFor('CONS', weeks);
+  const NAVY='FF1F3A5C', NAVYSOFT='FFEAF0F6', GREEN='FF2E7D6B', GREYTXT='FF6B7280', WHITE='FFFFFFFF', BLUEIN='FF0B3FA8';
+  const fillOf = argb => ({type:'pattern', pattern:'solid', fgColor:{argb}});
+  const F = (formula, result)=> cache? {formula, result} : {formula};
+  const ymOf = w => w.start.getUTCFullYear()*100 + (w.start.getUTCMonth()+1);
+  const wb = new ExcelJS.Workbook(); wb.creator = 'FC Semanal — Grupo Promoting'; wb.created = new Date();
+  wb.calcProperties = {fullCalcOnLoad:true}; // Excel recalcula todas las fórmulas al abrir
+  const mk = (name, color) => wb.addWorksheet(name, {properties:{tabColor:{argb:color}}, views:[{showGridLines:false}]});
+  const wsRes = mk('Resumen', NAVY), wsCB = mk('Consolidado Bs', NAVY), wsCU = mk('Consolidado US$', NAVY);
+  const wsE = {}; EMPRESAS.forEach(e=>wsE[e] = mk(e, GREEN));
+  const wsMes = mk('Mensual', 'FF6B7280'), wsRE = mk('Real vs Estimado', 'FF6B7280'), wsT = mk('Tasas', 'FF6B7280');
+
+  // ---------- encabezado común de las hojas semanales (filas 1–7) ----------
+  const hoyTxt = fmtDateLong(TODAY);
+  function weeklyHeader(ws, title, unitLabel){
+    ws.getColumn(1).width = 46;
+    ws.getCell('A1').value = title; ws.getCell('A1').font = {bold:true, size:14, color:{argb:NAVY}};
+    ws.getCell('A2').value = `Generado el ${hoyTxt} · semana actual S${todayInfo.week}·${todayInfo.isoYear} · Tasa: BCV (promedio semanal) · Moneda: ${unitLabel}`;
+    ws.getCell('A2').font = {italic:true, size:9, color:{argb:GREYTXT}};
+    ws.getRow(4).height = 34;
+    ws.getCell('A4').value = `Concepto (${unitLabel})`; ws.getCell('A5').value = 'Estado de la semana'; ws.getCell('A6').value = 'Mes (aaaamm, para totales mensuales)'; ws.getCell('A7').value = 'Tasa BCV promedio semana (Bs/US$)';
+    ['A4'].forEach(a=>{ ws.getCell(a).font={bold:true,color:{argb:WHITE}}; ws.getCell(a).fill=fillOf(NAVY); });
+    ['A5','A6','A7'].forEach(a=>{ ws.getCell(a).font={size:9,color:{argb:GREYTXT}}; });
+    weeks.forEach((w,i)=>{
+      const L = colL(i+2); ws.getColumn(i+2).width = 15;
+      const closedGlobal = isWeekClosed_global(w), esHoy = w.key===CURRENT_WEEK_KEY;
+      const h = ws.getCell(L+'4'); h.value = `S${w.week}·${w.isoYear}\n${fmtDateShort(w.start)}–${fmtDateShort(w.end)}`;
+      h.font = {bold:true, color:{argb:WHITE}, size:10}; h.fill = fillOf(closedGlobal? GREEN : (esHoy? 'FFB9812D' : NAVY));
+      h.alignment = {wrapText:true, horizontal:'center', vertical:'middle'};
+      const e5 = ws.getCell(L+'5'); e5.value = closedGlobal? 'VENCIDA' : (esHoy? 'ACTUAL' : 'PROYECCIÓN'); e5.font = {size:8, bold:true, color:{argb: closedGlobal? GREEN : GREYTXT}}; e5.alignment = {horizontal:'center'};
+      const e6 = ws.getCell(L+'6'); e6.value = ymOf(w); e6.font = {size:8, color:{argb:GREYTXT}}; e6.alignment = {horizontal:'center'};
+      const rt = getEffectiveRate(w.key);
+      const c7 = ws.getCell(L+'7'); c7.value = F(`IF(Tasas!${L}7="","",Tasas!${L}7)`, rt===null? '' : rt); c7.numFmt = '0.0000'; c7.font = {size:9, color:{argb:GREYTXT}}; c7.alignment = {horizontal:'right'};
+    });
+    ws.getRow(6).hidden = true;
+    ws.views = [{state:'frozen', xSplit:1, ySplit:7, showGridLines:false}];
+    ws.pageSetup = {orientation:'landscape', fitToPage:true, fitToWidth:0, fitToHeight:0, printTitlesColumn:'A:A', printTitlesRow:'4:5'};
+  }
+  const styleRow = (ws, r, opt)=>{
+    for(let c=1;c<=n+1;c++){ const cell = ws.getCell(r,c);
+      if(opt.fill) cell.fill = fillOf(opt.fill);
+      if(opt.bold) cell.font = Object.assign({}, cell.font||{}, {bold:true, color:{argb:opt.color||'FF1E2430'}});
+      if(opt.top) cell.border = {top:{style:'thin', color:{argb:NAVY}}};
+      if(c>1) cell.numFmt = opt.fmt || FMT_BS;
+    }
+  };
+  const negFill = (ws, ref)=> ws.addConditionalFormatting({ref, rules:[{type:'cellIs', operator:'lessThan', formulae:[0], style:{fill:{type:'pattern', pattern:'solid', bgColor:{argb:'FFFDE2DF'}}}}]});
+
+  // ---------- hojas por empresa (detalle) ----------
+  const LAY = {};
+  EMPRESAS.forEach(emp=>{
+    const ws = wsE[emp], s = ser[emp], L = {sec:{}, conc:{}};
+    weeklyHeader(ws, `FLUJO DE CAJA SEMANAL PROYECTADO — ${emp}`, 'Bs');
+    let r = 8; L.ini = r++;
+    EXP_ORDER.forEach(dk=>{ L.sec[dk] = r++; const cs = CONCEPTS[emp][dk]||[]; L.conc[dk] = [r, r+cs.length-1]; r += cs.length; });
+    L.neto = r++; L.fin = r++; r++; L.netoU = r++; L.finU = r++;
+    LAY[emp] = L;
+    ws.getCell(L.ini,1).value = 'SALDO INICIAL (Bs)'; ws.getCell(L.neto,1).value = 'NETO SEMANAL (Bs)'; ws.getCell(L.fin,1).value = 'SALDO FINAL (Bs)';
+    ws.getCell(L.netoU,1).value = 'NETO SEMANAL (US$)'; ws.getCell(L.finU,1).value = 'SALDO FINAL (US$)';
+    EXP_ORDER.forEach(dk=>{
+      ws.getCell(L.sec[dk],1).value = EXP_LABEL[dk];
+      (CONCEPTS[emp][dk]||[]).forEach((c,k)=>{ const cell = ws.getCell(L.conc[dk][0]+k,1); cell.value = signTag(dk,c)+c; cell.alignment = {indent:2}; cell.font = {size:10}; });
+    });
+    const netoTerms = EXP_ORDER.map(dk=>(DEPT_SIGN[dk]>0?'+':'-')+'@'+L.sec[dk]).join('').replace(/^\+/,'');
+    weeks.forEach((w,i)=>{
+      const l = colL(i+2), prev = colL(i+1), next = colL(i+3), x = s[i], rate = x.rate;
+      EXP_ORDER.forEach(dk=>{
+        const [a,b] = L.conc[dk];
+        (CONCEPTS[emp][dk]||[]).forEach((c,k)=>{ const v = valueForWeek(emp,dk,c,w.key)||0; const cell = ws.getCell(a+k, i+2); if(v!==0) cell.value = v; cell.font = {size:10, color:{argb:BLUEIN}}; });
+        ws.getCell(L.sec[dk], i+2).value = b>=a? F(dk==='TESORERIA'? (CONCEPTS[emp][dk]||[]).map((c,k)=>(tesSign(dk,c)>0?'+':'-')+l+(a+k)).join('').replace(/^\+/,'') : `SUM(${l}${a}:${l}${b})`, x.sectionTotals[dk]) : 0;
+      });
+      ws.getCell(L.neto, i+2).value = F('='.slice(1)+netoTerms.replace(/@(\d+)/g, l+'$1'), x.neto);
+      if(i===s.anchorIdx){ const c = ws.getCell(L.ini, i+2); c.value = x.saldoIni; c.font = {bold:true, color:{argb:BLUEIN}};
+        c.note = `Saldo bancario cargado en "Disponibilidad Inicial" (${s.anchorDate}). Es el único valor ingresado: el resto de saldos se calcula.`; }
+      if(i>=s.anchorIdx){ if(i>s.anchorIdx) ws.getCell(L.ini, i+2).value = F(`${prev}${L.fin}`, x.saldoIni); ws.getCell(L.fin, i+2).value = F(`${l}${L.ini}+${l}${L.neto}`, x.saldoFin); }
+      else { ws.getCell(L.fin, i+2).value = F(`${next}${L.ini}`, x.saldoFin); ws.getCell(L.ini, i+2).value = F(`${l}${L.fin}-${l}${L.neto}`, x.saldoIni); }
+      ws.getCell(L.netoU, i+2).value = F(`IF(OR(${l}$7="",${l}$7=0),"",${l}${L.neto}/${l}$7)`, rate? x.neto/rate : '');
+      ws.getCell(L.finU, i+2).value = F(`IF(OR(${l}$7="",${l}$7=0),"",${l}${L.fin}/${l}$7)`, rate? x.saldoFin/rate : '');
+    });
+    [L.ini, L.fin, L.finU].forEach(rr=>styleRow(ws, rr, {fill:NAVYSOFT, bold:true, color:NAVY}));
+    styleRow(ws, L.neto, {bold:true, top:true}); styleRow(ws, L.netoU, {bold:true});
+    EXP_ORDER.forEach(dk=>{ styleRow(ws, L.sec[dk], {fill:'FFF3F5F8', bold:true}); const [a,b]=L.conc[dk]; for(let rr=a; rr<=b; rr++) for(let c=2;c<=n+1;c++) ws.getCell(rr,c).numFmt = FMT_BS; });
+    ws.getCell(L.ini,1).font = ws.getCell(L.fin,1).font = ws.getCell(L.finU,1).font = {bold:true, color:{argb:NAVY}};
+    negFill(ws, `B${L.ini}:${lastCol}${L.fin}`); negFill(ws, `B${L.finU}:${lastCol}${L.finU}`);
+    ws.getCell(L.finU+2,1).value = 'Azul = dato ingresado/importado · Negro = fórmula. Cambie un monto de detalle y todos los saldos se recalculan.';
+    ws.getCell(L.finU+2,1).font = {italic:true, size:9, color:{argb:GREYTXT}};
+    ws.getCell(L.finU+3,1).value = 'Convención: el saldo bancario es el saldo inicial de la semana que contiene su fecha; las semanas vencidas se reconstruyen hacia atrás.';
+    ws.getCell(L.finU+3,1).font = {italic:true, size:9, color:{argb:GREYTXT}};
+  });
+
+  // ---------- consolidado Bs ----------
+  const C = {sec:{}}; { let r = 8; C.ini = r++; EXP_ORDER.forEach(dk=>C.sec[dk] = r++); C.neto = r++; C.fin = r++; r++; C.ctl = r++; }
+  weeklyHeader(wsCB, 'FLUJO DE CAJA SEMANAL PROYECTADO — CONSOLIDADO (CP + WF + TB + SV)', 'Bs');
+  wsCB.getCell(C.ini,1).value = 'SALDO INICIAL (Bs)'; wsCB.getCell(C.neto,1).value = 'NETO SEMANAL (Bs)'; wsCB.getCell(C.fin,1).value = 'SALDO FINAL (Bs)';
+  wsCB.getCell(C.ctl,1).value = 'Control de cuadre vs. suma de empresas (debe ser 0)';
+  EXP_ORDER.forEach(dk=>wsCB.getCell(C.sec[dk],1).value = EXP_LABEL[dk]);
+  const sumE = (row, l)=> EMPRESAS.map(e=>`'${e}'!${l}${row(LAY[e])}`).join('+');
+  const consNetoTerms = EXP_ORDER.map(dk=>(DEPT_SIGN[dk]>0?'+':'-')+'@'+C.sec[dk]).join('').replace(/^\+/,'');
+  weeks.forEach((w,i)=>{
+    const l = colL(i+2), x = cons[i];
+    wsCB.getCell(C.ini, i+2).value = F(sumE(L=>L.ini, l), x.saldoIni);
+    EXP_ORDER.forEach(dk=> wsCB.getCell(C.sec[dk], i+2).value = F(sumE(L=>L.sec[dk], l), x.sectionTotals[dk]));
+    wsCB.getCell(C.neto, i+2).value = F(consNetoTerms.replace(/@(\d+)/g, l+'$1'), x.neto);
+    wsCB.getCell(C.fin, i+2).value = F(`${l}${C.ini}+${l}${C.neto}`, x.saldoFin);
+    wsCB.getCell(C.ctl, i+2).value = F(`ROUND(${l}${C.fin}-(${sumE(L=>L.fin, l)}),2)`, 0);
+  });
+  [C.ini, C.fin].forEach(rr=>styleRow(wsCB, rr, {fill:NAVYSOFT, bold:true, color:NAVY}));
+  styleRow(wsCB, C.neto, {bold:true, top:true}); EXP_ORDER.forEach(dk=>styleRow(wsCB, C.sec[dk], {fill:'FFF3F5F8', bold:true}));
+  styleRow(wsCB, C.ctl, {fmt:'#,##0.00;[Red]-#,##0.00;"✓ 0"'}); wsCB.getCell(C.ctl,1).font = {italic:true, size:9, color:{argb:GREYTXT}};
+  wsCB.getCell(C.ini,1).font = wsCB.getCell(C.fin,1).font = {bold:true, color:{argb:NAVY}};
+  negFill(wsCB, `B${C.ini}:${lastCol}${C.fin}`);
+
+  // ---------- consolidado US$ (Bs / tasa de cada semana) ----------
+  weeklyHeader(wsCU, 'FLUJO DE CAJA SEMANAL PROYECTADO — CONSOLIDADO — US$', 'US$');
+  const rowsU = [[C.ini,'SALDO INICIAL (US$)','saldoIni'],[C.sec.CXC,EXP_LABEL.CXC,'CXC'],[C.sec.TESORERIA,EXP_LABEL.TESORERIA,'TESORERIA'],[C.sec.NOMINA,EXP_LABEL.NOMINA,'NOMINA'],[C.sec.CXP,EXP_LABEL.CXP,'CXP'],[C.sec.IMPUESTOS,EXP_LABEL.IMPUESTOS,'IMPUESTOS'],[C.neto,'NETO SEMANAL (US$)','neto'],[C.fin,'SALDO FINAL (US$)','saldoFin']];
+  rowsU.forEach(([r,label,key])=>{
+    wsCU.getCell(r,1).value = label;
+    weeks.forEach((w,i)=>{ const l = colL(i+2), x = cons[i], rate = x.rate; const bs = DEPT_SIGN[key]!==undefined? x.sectionTotals[key] : x[key];
+      wsCU.getCell(r, i+2).value = F(`IF(OR(${l}$7="",${l}$7=0),"",'Consolidado Bs'!${l}${r}/${l}$7)`, rate? bs/rate : ''); });
+  });
+  [C.ini, C.fin].forEach(rr=>styleRow(wsCU, rr, {fill:NAVYSOFT, bold:true, color:NAVY})); styleRow(wsCU, C.neto, {bold:true, top:true});
+  EXP_ORDER.forEach(dk=>styleRow(wsCU, C.sec[dk], {fill:'FFF3F5F8', bold:true}));
+  wsCU.getCell(C.ini,1).font = wsCU.getCell(C.fin,1).font = {bold:true, color:{argb:NAVY}}; negFill(wsCU, `B${C.ini}:${lastCol}${C.fin}`);
+  wsCU.getCell(C.fin+2,1).value = 'Cada semana se convierte con su propia tasa BCV promedio (hoja Tasas). Si falta la tasa de una semana, queda vacía.'; wsCU.getCell(C.fin+2,1).font = {italic:true,size:9,color:{argb:GREYTXT}};
+
+  // ---------- Tasas ----------
+  wsT.getColumn(1).width = 34;
+  wsT.getCell('A1').value = 'TASAS DE CAMBIO BCV (Bs/US$)'; wsT.getCell('A1').font = {bold:true, size:14, color:{argb:NAVY}};
+  wsT.getCell('A2').value = 'La fila 7 alimenta todas las hojas. Puede editarla: los saldos en US$ se recalculan.'; wsT.getCell('A2').font = {italic:true,size:9,color:{argb:GREYTXT}};
+  wsT.getCell('A4').value = 'Semana'; wsT.getCell('A5').value = 'Inicio'; wsT.getCell('A6').value = 'Fin'; wsT.getCell('A7').value = 'Tasa semanal usada (Bs/US$)';
+  weeks.forEach((w,i)=>{ const l = colL(i+2); wsT.getColumn(i+2).width = 13;
+    const h = wsT.getCell(l+'4'); h.value = `S${w.week}·${w.isoYear}`; h.font = {bold:true,color:{argb:WHITE}}; h.fill = fillOf(NAVY); h.alignment = {horizontal:'center'};
+    wsT.getCell(l+'5').value = fmtDateShort(w.start); wsT.getCell(l+'6').value = fmtDateShort(w.end);
+    [5,6].forEach(rr=>{ wsT.getCell(l+rr).alignment = {horizontal:'center'}; wsT.getCell(l+rr).font = {size:9,color:{argb:GREYTXT}}; });
+    const rt = getEffectiveRate(w.key); const c = wsT.getCell(l+'7'); if(rt!==null) c.value = rt; c.numFmt = '0.0000'; c.font = {color:{argb:BLUEIN}, bold:true};
+  });
+  const dias = Object.keys(tcDiario).sort(); wsT.getCell('A10').value = 'Tasas diarias cargadas'; wsT.getCell('A10').font = {bold:true,color:{argb:NAVY}};
+  dias.forEach((d,k)=>{ wsT.getCell(11+k,1).value = d; const c = wsT.getCell(11+k,2); c.value = Number(tcDiario[d]); c.numFmt='0.0000'; c.font={color:{argb:BLUEIN}}; });
+  wsT.views = [{state:'frozen', xSplit:1, ySplit:4, showGridLines:false}];
+
+  // ---------- Mensual ----------
+  const months = []; const mIdx = {}; weeks.forEach(w=>{ const ym = ymOf(w); if(mIdx[ym]===undefined){ mIdx[ym] = months.length; months.push({ym, label: w.monthLabel}); } });
+  wsMes.getColumn(1).width = 40;
+  wsMes.getCell('A1').value = 'RESUMEN MENSUAL DEL FLUJO DE CAJA (Bs)'; wsMes.getCell('A1').font = {bold:true,size:14,color:{argb:NAVY}};
+  wsMes.getCell('A2').value = 'Cada semana se asigna al mes en que inicia. Totales por SUMIF sobre las hojas semanales.'; wsMes.getCell('A2').font = {italic:true,size:9,color:{argb:GREYTXT}};
+  wsMes.getCell('A4').value = 'Concepto (Bs)'; wsMes.getCell('A4').font = {bold:true,color:{argb:WHITE}}; wsMes.getCell('A4').fill = fillOf(NAVY); wsMes.getRow(5).hidden = true;
+  months.forEach((m,j)=>{ wsMes.getColumn(j+2).width = 16; const h = wsMes.getCell(4,j+2); h.value = m.label; h.font={bold:true,color:{argb:WHITE}}; h.fill=fillOf(NAVY); h.alignment={horizontal:'center'}; wsMes.getCell(5,j+2).value = m.ym; });
+  const blocks = [{name:'Consolidado Bs', title:'CONSOLIDADO', L:C, rows:cons}].concat(EMPRESAS.map(e=>({name:e, title:e, L:LAY[e], rows:ser[e]})));
+  let mr = 7;
+  blocks.forEach(B=>{
+    const hdr = wsMes.getCell(mr,1); hdr.value = B.title; for(let c=1;c<=months.length+1;c++){ wsMes.getCell(mr,c).fill = fillOf(NAVYSOFT); wsMes.getCell(mr,c).font = {bold:true,color:{argb:NAVY}}; } mr++;
+    const rIni = mr++, rSec = {}; EXP_ORDER.forEach(dk=>rSec[dk] = mr++); const rNeto = mr++, rFin = mr++; mr++;
+    wsMes.getCell(rIni,1).value = 'Saldo inicial del mes'; wsMes.getCell(rNeto,1).value = 'Neto del mes'; wsMes.getCell(rFin,1).value = 'Saldo final del mes';
+    EXP_ORDER.forEach(dk=>{ wsMes.getCell(rSec[dk],1).value = EXP_LABEL[dk]; wsMes.getCell(rSec[dk],1).alignment = {indent:1}; });
+    const sh = `'${B.name}'`, ymRng = `${sh}!$B$6:$${lastCol}$6`;
+    months.forEach((m,j)=>{
+      const col = colL(j+2), idxs = weeks.map((w,i)=>ymOf(w)===m.ym? i : -1).filter(i=>i>=0);
+      const first = B.rows[idxs[0]], last = B.rows[idxs[idxs.length-1]];
+      wsMes.getCell(rIni,j+2).value = F(`INDEX(${sh}!$B$${B.L.ini}:$${lastCol}$${B.L.ini},MATCH(${col}$5,${ymRng},0))`, first.saldoIni);
+      EXP_ORDER.forEach(dk=> wsMes.getCell(rSec[dk],j+2).value = F(`SUMIF(${ymRng},${col}$5,${sh}!$B$${B.L.sec[dk]}:$${lastCol}$${B.L.sec[dk]})`, idxs.reduce((a,i)=>a+B.rows[i].sectionTotals[dk],0)));
+      wsMes.getCell(rNeto,j+2).value = F(EXP_ORDER.map(dk=>(DEPT_SIGN[dk]>0?'+':'-')+col+rSec[dk]).join('').replace(/^\+/,''), idxs.reduce((a,i)=>a+B.rows[i].neto,0));
+      wsMes.getCell(rFin,j+2).value = F(`INDEX(${sh}!$B$${B.L.fin}:$${lastCol}$${B.L.fin},MATCH(${col}$5,${ymRng},1))`, last.saldoFin);
+    });
+    [rIni,rNeto,rFin].forEach(rr=>{ for(let c=1;c<=months.length+1;c++){ const cell = wsMes.getCell(rr,c); if(rr!==rNeto) cell.fill = fillOf('FFF8FAFC'); cell.font = {bold:true}; if(rr===rNeto) cell.border = {top:{style:'thin',color:{argb:NAVY}}}; } });
+    for(let rr=rIni; rr<=rFin; rr++) for(let c=2;c<=months.length+1;c++) wsMes.getCell(rr,c).numFmt = FMT_BS;
+    negFill(wsMes, `B${rIni}:${colL(months.length+1)}${rFin}`);
+  });
+  wsMes.views = [{state:'frozen', xSplit:1, ySplit:4, showGridLines:false}];
+
+  // ---------- Real vs Estimado ----------
+  wsRE.getCell('A1').value = 'REAL VS ESTIMADO — SEMANAS CERRADAS'; wsRE.getCell('A1').font = {bold:true,size:14,color:{argb:NAVY}};
+  wsRE.getCell('A2').value = 'Estimado y Real en Bs (valores). Diferencia y % son fórmulas; "efecto en caja" favorable = más cobros o menos pagos que lo estimado.'; wsRE.getCell('A2').font = {italic:true,size:9,color:{argb:GREYTXT}};
+  ['Semana','Empresa','Departamento','Estimado (Bs)','Real (Bs)','Diferencia (Real − Est.)','Desv. %','Efecto en caja'].forEach((t,i)=>{ const c = wsRE.getCell(4,i+1); c.value = t; c.font={bold:true,color:{argb:WHITE}}; c.fill=fillOf(NAVY); c.alignment={horizontal:'center',wrapText:true,vertical:'middle'}; });
+  wsRE.getRow(4).height = 30; [12,10,22,18,18,22,10,18].forEach((wd,i)=>wsRE.getColumn(i+1).width = wd);
+  const cerr = Object.keys(closedMap).filter(k=>closedMap[k]).map(k=>k.split('|')).sort((a,b)=> b[2].localeCompare(a[2]) || a[0].localeCompare(b[0]) || a[1].localeCompare(b[1]));
+  if(!cerr.length){ wsRE.getCell(5,1).value = 'Todavía no hay semanas cerradas con reales.'; wsRE.getCell(5,1).font = {italic:true,color:{argb:GREYTXT}}; }
+  cerr.forEach(([e,d,wk],k)=>{
+    const r = 5+k, est = sumConceptos(getEstimate,e,d,wk), real = sumConceptos(getActual,e,d,wk);
+    wsRE.getCell(r,1).value = wk; wsRE.getCell(r,2).value = e; wsRE.getCell(r,3).value = DEPT_LABEL[d];
+    wsRE.getCell(r,4).value = est; wsRE.getCell(r,5).value = real; wsRE.getCell(r,4).font = wsRE.getCell(r,5).font = {color:{argb:BLUEIN}};
+    wsRE.getCell(r,6).value = F(`E${r}-D${r}`, real-est);
+    wsRE.getCell(r,7).value = F(`IF(D${r}=0,"",F${r}/D${r})`, est? (real-est)/est : '');
+    wsRE.getCell(r,8).value = F(`IF(F${r}*${DEPT_SIGN[d]}>=0,"Favorable","Desfavorable")`, (real-est)*DEPT_SIGN[d]>=0? 'Favorable':'Desfavorable');
+    [4,5,6].forEach(c=>wsRE.getCell(r,c).numFmt = FMT_BS); wsRE.getCell(r,7).numFmt = '0.0%;[Red]-0.0%';
+  });
+  if(cerr.length) wsRE.addConditionalFormatting({ref:`H5:H${4+cerr.length}`, rules:[{type:'cellIs', operator:'equal', formulae:['"Desfavorable"'], style:{font:{color:{argb:'FF9C0006'}, bold:true}}},{type:'cellIs', operator:'equal', formulae:['"Favorable"'], style:{font:{color:{argb:'FF1B6B3A'}, bold:true}}}]});
+  wsRE.views = [{state:'frozen', ySplit:4, showGridLines:false}]; wsRE.autoFilter = {from:'A4', to:'H4'};
+
+  // ---------- Resumen (indicadores con fórmulas) ----------
+  const A = colL(ci+2), Z = colL(hEnd+2), cb = `'Consolidado Bs'`;
+  const rng = row => `${cb}!${A}${row}:${Z}${row}`;
+  const pagosRows = [C.sec.NOMINA, C.sec.CXP, C.sec.IMPUESTOS];
+  const win = cons.slice(ci, hEnd+1);
+  const vCobros = win.reduce((a,x)=>a+x.sectionTotals.CXC,0), vPagos = win.reduce((a,x)=>a+x.sectionTotals.NOMINA+x.sectionTotals.CXP+x.sectionTotals.IMPUESTOS,0);
+  const vMin = Math.min(...win.map(x=>x.saldoFin)), iMin = win.findIndex(x=>x.saldoFin===vMin);
+  wsRes.getColumn(1).width = 44; for(let c=2;c<=7;c++) wsRes.getColumn(c).width = 20;
+  wsRes.getCell('A1').value = 'FLUJO DE CAJA SEMANAL PROYECTADO — RESUMEN EJECUTIVO'; wsRes.getCell('A1').font = {bold:true, size:16, color:{argb:NAVY}};
+  wsRes.getCell('A2').value = `Grupo Promoting · CP, WF, TB, SV · Generado el ${hoyTxt} · Semana actual S${todayInfo.week}·${todayInfo.isoYear} · Horizonte: ${H} semanas · Moneda: Bs (US$ a tasa BCV semanal)`;
+  wsRes.getCell('A2').font = {italic:true, size:9, color:{argb:GREYTXT}};
+  const sect = (r,t)=>{ for(let c=1;c<=7;c++){ wsRes.getCell(r,c).fill = fillOf(NAVY); wsRes.getCell(r,c).font = {bold:true,color:{argb:WHITE}}; } wsRes.getCell(r,1).value = t; };
+  sect(4, 'Indicadores consolidados');
+  const kp = [
+    ['Saldo inicial de la semana actual (Bs)', F(`${cb}!${A}${C.ini}`, win[0].saldoIni), FMT_BS],
+    [`Saldo final a ${H} semanas (Bs)`, F(`${cb}!${Z}${C.fin}`, win[win.length-1].saldoFin), FMT_BS],
+    ['Saldo mínimo proyectado (Bs)', F(`MIN(${rng(C.fin)})`, vMin), FMT_BS],
+    ['Semana del saldo mínimo', F(`INDEX(${cb}!${A}4:${Z}4,MATCH(B7,${rng(C.fin)},0))`, `S${win[iMin].week.week}·${win[iMin].week.isoYear}\n${fmtDateShort(win[iMin].week.start)}–${fmtDateShort(win[iMin].week.end)}`), '@'],
+    [`Cobros (CxC) a ${H} semanas (Bs)`, F(`SUM(${rng(C.sec.CXC)})`, vCobros), FMT_BS],
+    [`Pagos (Nómina + CxP + Impuestos) a ${H} semanas (Bs)`, F(pagosRows.map(r=>`SUM(${rng(r)})`).join('+'), vPagos), FMT_BS],
+    ['Cobros / pagos (veces)', F('IFERROR(B9/B10,"")', vPagos? vCobros/vPagos : ''), '0.00"×"'],
+    ['Cobertura de caja (semanas de pagos)', F(`IFERROR(B5/(B10/${hEnd-ci+1}),"")`, vPagos>0? win[0].saldoIni/(vPagos/win.length) : ''), '0.0'],
+  ];
+  kp.forEach(([t,v,f],k)=>{ const r = 5+k; wsRes.getCell(r,1).value = t; const c = wsRes.getCell(r,2); c.value = v; c.numFmt = f; c.font = {bold:true, size:11}; c.alignment = {horizontal:'right', wrapText:true}; wsRes.getCell(r,1).border = c.border = {bottom:{style:'hair', color:{argb:'FFC7CFD8'}}}; });
+  wsRes.getRow(8).height = 30;
+  negFill(wsRes, 'B5:B7');
+  sect(15, 'Por empresa');
+  ['Empresa','Saldo inicial semana actual','Saldo mínimo','Saldo final','Mínimo de seguridad (Bs)','Semanas bajo mínimo','Estado'].forEach((t,i)=>{ const c = wsRes.getCell(16,i+1); c.value = t; c.font={bold:true,color:{argb:NAVY}}; c.fill=fillOf(NAVYSOFT); c.alignment={horizontal:i?'center':'left',wrapText:true,vertical:'middle'}; });
+  wsRes.getRow(16).height = 30;
+  EMPRESAS.forEach((e,k)=>{
+    const r = 17+k, L = LAY[e], sw = ser[e].slice(ci, hEnd+1), rg = `'${e}'!${A}${L.fin}:${Z}${L.fin}`, minS = Number(settings.minSaldo[e])||0;
+    wsRes.getCell(r,1).value = e;
+    wsRes.getCell(r,2).value = F(`'${e}'!${A}${L.ini}`, sw[0].saldoIni);
+    wsRes.getCell(r,3).value = F(`MIN(${rg})`, Math.min(...sw.map(x=>x.saldoFin)));
+    wsRes.getCell(r,4).value = F(`'${e}'!${Z}${L.fin}`, sw[sw.length-1].saldoFin);
+    const m = wsRes.getCell(r,5); m.value = minS; m.font = {color:{argb:BLUEIN}, bold:true};
+    const nb = sw.filter(x=>x.saldoFin<minS).length;
+    wsRes.getCell(r,6).value = F(`COUNTIF(${rg},"<"&E${r})`, nb);
+    wsRes.getCell(r,7).value = F(`IF(F${r}>0,"▲ Revisar","● OK")`, nb>0? '▲ Revisar':'● OK');
+    [2,3,4,5].forEach(c=>wsRes.getCell(r,c).numFmt = FMT_BS); wsRes.getCell(r,6).alignment = wsRes.getCell(r,7).alignment = {horizontal:'center'};
+    for(let c=1;c<=7;c++) wsRes.getCell(r,c).border = {bottom:{style:'hair', color:{argb:'FFC7CFD8'}}};
+  });
+  wsRes.addConditionalFormatting({ref:'G17:G20', rules:[{type:'cellIs', operator:'equal', formulae:['"▲ Revisar"'], style:{font:{color:{argb:'FF9C0006'}, bold:true}}}]});
+  negFill(wsRes, 'B17:D20');
+  sect(22, 'Alertas al momento de exportar');
+  const alertas = computeAlertas(H); const ic = {3:'▲ Crítico',2:'● Atención',1:'○ Aviso'};
+  if(!alertas.length){ wsRes.getCell(23,1).value = '✓ Sin alertas.'; }
+  alertas.slice(0,14).forEach((a,k)=>{ const c = wsRes.getCell(23+k,1); c.value = `${ic[a.sev]} — ${a.txt}`; c.font = {size:10, color:{argb: a.sev===3? 'FF9C0006' : 'FF1E2430'}}; });
+  const nr = 23 + Math.max(1, Math.min(14, alertas.length)) + 1;
+  sect(nr, 'Notas y supuestos');
+  ['Fuente: plantillas de estimados por departamento (reales para las semanas cerradas) y saldos bancarios cargados en la herramienta.',
+   'Saldo inicial = suma del último saldo bancario cargado por empresa; es el único dato ingresado en la cadena de saldos (el resto son fórmulas).',
+   'Neto semanal = Cobros + Tesorería neta − Nómina − CxP − Impuestos. En Tesorería todos los conceptos se cargan en positivo y el signo (+) entra / (−) sale se aplica por concepto; el IGTF se carga solo en Impuestos.',
+   'Conversión a US$ con la tasa BCV promedio de cada semana (hoja Tasas). Semanas sin tasa quedan vacías en US$.',
+   'Moneda de registro: VES. Valide tasas, plazos e impuestos con la normativa vigente y el asesor fiscal.'].forEach((t,k)=>{ const c = wsRes.getCell(nr+1+k,1); c.value = t; c.font = {size:9, color:{argb:GREYTXT}}; });
+  wsRes.views = [{showGridLines:false}];
+  wsRes.pageSetup = {orientation:'landscape', fitToPage:true, fitToWidth:1, fitToHeight:0};
+  return await wb.xlsx.writeBuffer();
+}
+async function exportarFlujoExcel(btn){
+  const txt = btn? btn.textContent : ''; if(btn){ btn.disabled = true; btn.textContent = 'Generando Excel...'; }
+  try{ downloadBuffer(await buildFlujoWorkbook(), `Flujo_Caja_Proyectado_${CURRENT_WEEK_KEY}.xlsx`); }
+  catch(e){ console.error(e); alert('No se pudo generar el Excel: '+e.message); }
+  if(btn){ btn.disabled = false; btn.textContent = txt; }
+}
+document.querySelectorAll('.btnExportFlujo').forEach(b=>b.addEventListener('click', ()=>exportarFlujoExcel(b)));
+
+/* ================= COMPARAR MESES CON REEXPRESIÓN MONETARIA ================= */
+// Cada semana se asigna al mes en que INICIA (igual que la hoja "Mensual" del Excel).
+// Métodos: nominal | usd (cada semana ÷ su tasa BCV) | inpc (Bs constantes con índice de precios cargado por el usuario)
+//          | tasa (US$ del mes × tasa promedio del mes base = Bs constantes al tipo de cambio del mes base).
+const CMP_METRICS = [
+  {k:'cobros', label:'Cobros (CxC)', kind:'flow', good:+1},
+  {k:'tes',    label:'Tesorería (neto)', kind:'flow', good:+1},
+  {k:'nom',    label:'Nómina', kind:'flow', good:-1},
+  {k:'cxp',    label:'Cuentas por pagar', kind:'flow', good:-1},
+  {k:'imp',    label:'Impuestos', kind:'flow', good:-1},
+  {k:'pagos',  label:'Pagos totales (Nómina + CxP + Impuestos)', kind:'flow', good:-1},
+  {k:'neto',   label:'Flujo neto del mes', kind:'flow', good:+1},
+  {k:'ini',    label:'Saldo inicial del mes', kind:'stock'},
+  {k:'fin',    label:'Saldo final del mes', kind:'stock'}
+];
+const CMP_METODOS = {
+  nom:  'Bs nominales (sin reexpresar)',
+  usd:  'US$ a tasa BCV de cada semana',
+  inpc: 'Bs constantes del mes base (índice de precios)',
+  tasa: 'Bs constantes del mes base (tipo de cambio BCV)'
+};
+const cmpState = {scope:'CONS', metodo:'usd', A:null, B:null, base:null, metric:'neto'};
+const ymKey = w => w.start.getUTCFullYear()+'-'+String(w.start.getUTCMonth()+1).padStart(2,'0');
+function mondaysInMonth(y, m0){ let n=0; const d = new Date(Date.UTC(y,m0,1)); while(d.getUTCMonth()===m0){ if(d.getUTCDay()===1) n++; d.setUTCDate(d.getUTCDate()+1); } return n; }
+function monthsBetween(a, b){ const [ya,ma]=a.split('-').map(Number), [yb,mb]=b.split('-').map(Number); return (yb*12+mb)-(ya*12+ma); }
+
+// Agrega el flujo semanal por mes. Devuelve [{ym,label,weeks,partial,estado,nom:{...},usd:{...},missingRate,rate}]
+function computeMeses(scope){
+  const weeks = weeksAll(), s = seriesFor(scope, weeks), emps = scope==='CONS'? EMPRESAS : [scope];
+  const idx = {}, out = [];
+  weeks.forEach((w,i)=>{ const k = ymKey(w); if(idx[k]===undefined){ idx[k] = out.length; out.push({ym:k, label:w.monthLabel, ix:[]}); } out[idx[k]].ix.push(i); });
+  out.forEach(m=>{
+    const [y,mo] = m.ym.split('-').map(Number);
+    m.weeks = m.ix.length; m.partial = m.ix.length < mondaysInMonth(y, mo-1);
+    const closedW = m.ix.filter(i=> emps.every(e=> DEPTS.every(d=> isClosed(e,d.key,weeks[i].key))));
+    m.estado = closedW.length===m.weeks? 'Real' : (closedW.length===0? 'Estimado' : 'Mixto');
+    const pick = x => ({cobros:x.sectionTotals.CXC, tes:x.sectionTotals.TESORERIA, nom:x.sectionTotals.NOMINA, cxp:x.sectionTotals.CXP, imp:x.sectionTotals.IMPUESTOS,
+                        pagos:x.sectionTotals.NOMINA+x.sectionTotals.CXP+x.sectionTotals.IMPUESTOS, neto:x.neto});
+    m.nom = {}; m.usd = {}; CMP_METRICS.forEach(c=>{ m.nom[c.k]=0; m.usd[c.k]=0; });
+    m.missingRate = 0; const rates = [];
+    m.ix.forEach(i=>{
+      const x = s[i], v = pick(x);
+      Object.keys(v).forEach(k=>{ m.nom[k] += v[k]; if(x.rate) m.usd[k] += v[k]/x.rate; });
+      if(x.rate) rates.push(x.rate); else m.missingRate++;
+    });
+    const first = s[m.ix[0]], last = s[m.ix[m.ix.length-1]];
+    m.nom.ini = first.saldoIni; m.nom.fin = last.saldoFin;
+    m.usd.ini = first.rate? first.saldoIni/first.rate : 0; m.usd.fin = last.rate? last.saldoFin/last.rate : 0;
+    m.usdOk = m.missingRate===0 && !!first.rate && !!last.rate;
+    m.rate = rates.length? rates.reduce((a,b)=>a+b,0)/rates.length : null; // promedio simple de las tasas semanales cargadas
+  });
+  return out;
+}
+// Índice de precios del mes: dato cargado; si no hay, se extrapola con la inflación mensual supuesta (si se indicó) desde el último dato anterior.
+function cmpIndex(ym){
+  const inp = settings.inpc||{}; const v = Number(inp[ym]);
+  if(v>0) return {v, est:false};
+  const g = Number(settings.inflSup); if(!(g>0)) return null;
+  const prev = Object.keys(inp).filter(k=>Number(inp[k])>0 && k<ym).sort();
+  if(!prev.length) return null;
+  const L = prev[prev.length-1];
+  return {v: Number(inp[L])*Math.pow(1+g/100, monthsBetween(L, ym)), est:true};
+}
+// Valor reexpresado de una métrica de un mes según el método. null si falta algún insumo.
+function cmpValue(m, k, metodo, base, meses){
+  if(metodo==='nom') return m.nom[k];
+  if(metodo==='usd') return m.usdOk? m.usd[k] : null;
+  if(metodo==='inpc'){ const a = cmpIndex(base), b = cmpIndex(m.ym); return (a&&b)? m.nom[k]*a.v/b.v : null; }
+  if(metodo==='tasa'){ const bm = meses.find(x=>x.ym===base); if(!bm||!bm.rate||!m.usdOk) return null; return m.usd[k]*bm.rate; }
+  return null;
+}
+const CMP_MES = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+function cmpMesLabel(ym){ const [y,m]=ym.split('-').map(Number); return CMP_MES[m-1]+' '+y; }
+function cmpFmt(v, metodo){ if(v===null||v===undefined||isNaN(v)) return '—'; return Math.round(v).toLocaleString('en-US'); }
+function cmpUnit(metodo, base){
+  const bl = base? ' de '+cmpMesLabel(base) : '';
+  return metodo==='nom'? 'Bs nominales' : metodo==='usd'? 'US$' : 'Bs constantes'+bl;
+}
+function cmpVar(a, b){ if(a===null||b===null||a===undefined||b===undefined||a===0) return null; return (b-a)/Math.abs(a); }
+function cmpPct(p){ return p===null? '—' : (p>0?'+':'')+(p*100).toFixed(1)+'%'; }
+function cmpVarClass(p, good){ if(p===null||!good) return ''; const fav = p*good>0; return Math.abs(p)<0.0005? '' : (fav? 'color:#1a7f4b' : 'color:#c0392b'); }
+
+function cmpMesesChart(el, meses, metodo, base, metric){
+  const nomV = meses.map(m=>m.nom[metric]);
+  const resV = meses.map(m=>cmpValue(m, metric, metodo, base, meses));
+  const dual = metodo==='inpc' || metodo==='tasa';
+  const W=900, H=260, ml=74, mr=16, mt=14, mb=34, n=meses.length;
+  const series = metodo==='nom'? [nomV] : dual? [nomV, resV] : [resV];
+  const all = series.flat().filter(v=>v!==null);
+  if(!all.length){ el.innerHTML = '<div class="empty-state">Sin datos para este método (revise tasas BCV o índices).</div>'; return; }
+  let lo = Math.min(0, ...all), hi = Math.max(0, ...all); if(hi===lo) hi = lo+1;
+  const st = niceStep((hi-lo)/4); hi = Math.ceil(hi/st-1e-9)*st; if(lo<0) lo = Math.floor(lo/st+1e-9)*st;
+  const band = (W-ml-mr)/n, ns = series.length, bw = Math.max(4, Math.min(22, (band-8)/ns)), y = v=> mt + (hi-v)*(H-mt-mb)/(hi-lo);
+  const colors = metodo==='nom'? [VIZ.s1] : dual? [VIZ.s1, VIZ.s2] : [VIZ.s2];
+  let svg = `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Comparación mensual" style="display:block;max-width:100%;">` + drawAxes(lo, hi, W, H, ml, mr, mt, mb);
+  const step = Math.ceil(n/12);
+  meses.forEach((m,i)=>{
+    const cx = ml + band*(i+0.5);
+    series.forEach((sr,j)=>{ const v = sr[i]; if(v===null||v===undefined) return; const x0 = cx - (ns*bw)/2 + j*bw, y0 = y(0), y1 = y(v);
+      svg += `<rect x="${x0}" y="${Math.min(y0,y1)}" width="${bw-1}" height="${Math.max(1,Math.abs(y0-y1))}" rx="2" fill="${colors[j]}" opacity="${m.partial?0.5:1}"/>`; });
+    if(i%step===0) svg += `<text x="${cx}" y="${H-12}" text-anchor="middle" font-size="11" fill="${VIZ.axis}">${CMP_MES[Number(m.ym.slice(5))-1]}-${m.ym.slice(2,4)}</text>`;
+  });
+  svg += `<line class="xh" y1="${mt}" y2="${H-mb}" stroke="#9aa3af" stroke-width="1" style="display:none"/></svg>`;
+  el.innerHTML = svg;
+  const unit = cmpUnit(metodo, base);
+  attachHover(el, el.querySelector('svg'), n, {W,ml,band}, i=>{
+    let t = `<b>${meses[i].label}</b>${meses[i].partial?' (mes parcial)':''} · ${meses[i].estado}`;
+    if(metodo==='nom' || dual) t += `<br><span style="color:${VIZ.s1}">■</span> Nominal (Bs): ${cmpFmt(nomV[i],'nom')}`;
+    if(metodo!=='nom') t += `<br><span style="color:${VIZ.s2}">■</span> ${unit}: ${cmpFmt(resV[i],metodo)}`;
+    return t;
+  });
+}
+
+function renderComparar(){
+  const root = document.getElementById('cmpRoot'); if(!root) return;
+  settings.inpc = settings.inpc || {};
+  const st = cmpState, meses = computeMeses(st.scope), yms = meses.map(m=>m.ym);
+  const curYm = todayInfo && yms.includes(ymKey({start:stripTime(TODAY)}))? ymKey({start:stripTime(TODAY)}) : yms[0];
+  if(!st.B || !yms.includes(st.B)) st.B = curYm;
+  if(!st.A || !yms.includes(st.A)) st.A = yms[Math.max(0, yms.indexOf(st.B)-1)];
+  if(!st.base || !yms.includes(st.base)) st.base = st.B;
+  const mL = ym => (meses.find(m=>m.ym===ym)||{}).label || ym;
+  const opts = (sel,list)=> list.map(y=>`<option value="${y}"${y===sel?' selected':''}>${mL(y)}</option>`).join('');
+  const unit = cmpUnit(st.metodo, st.base);
+  const mA = meses.find(m=>m.ym===st.A), mB = meses.find(m=>m.ym===st.B);
+
+  let h = `<div class="toolbar">
+    <label style="font-size:12.5px;">Alcance: <select id="cmpScope" style="font-size:12.5px;padding:5px 6px;">${['CONS'].concat(EMPRESAS).map(e=>`<option value="${e}"${e===st.scope?' selected':''}>${e==='CONS'?'Consolidado':e}</option>`).join('')}</select></label>
+    <label style="font-size:12.5px;">Reexpresión: <select id="cmpMetodo" style="font-size:12.5px;padding:5px 6px;">${Object.keys(CMP_METODOS).map(k=>`<option value="${k}"${k===st.metodo?' selected':''}>${CMP_METODOS[k]}</option>`).join('')}</select></label>
+    <label style="font-size:12.5px;">Mes base: <select id="cmpBase" style="font-size:12.5px;padding:5px 6px;"${st.metodo==='inpc'||st.metodo==='tasa'?'':' disabled'}>${opts(st.base,yms)}</select></label>
+  </div>`;
+
+  // ---- avisos de calidad ----
+  const av = [];
+  const sinTasa = meses.filter(m=>!m.usdOk).length;
+  if((st.metodo==='usd'||st.metodo==='tasa') && sinTasa) av.push(`<b>${sinTasa} mes(es) sin tasa BCV completa</b> (marcados "—"). Cargue las tasas en la pestaña <i>Tasa de Cambio</i>; un mes con una sola semana sin tasa no se puede convertir.`);
+  if(st.metodo==='tasa'){ const bm = meses.find(m=>m.ym===st.base); if(!bm||!bm.rate) av.push('El mes base no tiene tasa BCV cargada: no se puede reexpresar.'); }
+  if(st.metodo==='inpc'){
+    const sinIdx = meses.filter(m=>!cmpIndex(m.ym)).length, est = meses.filter(m=>{ const c = cmpIndex(m.ym); return c && c.est; }).length;
+    if(sinIdx) av.push(`<b>${sinIdx} mes(es) sin índice de precios</b> (marcados "—"). Cargue el índice en la tabla de abajo (valores oficiales publicados por el BCV/INE: valídelos con la fuente vigente).`);
+    if(est) av.push(`${est} mes(es) usan un índice <b>supuesto</b> (extrapolado con la inflación mensual que usted indicó): es una estimación, no un dato.`);
+  }
+  if(meses.some(m=>m.partial)) av.push('Los meses "parcial" no tienen todas sus semanas en la tabla (el primero o el último de la ventana): no son comparables con meses completos.');
+  if(meses.some(m=>m.estado!=='Real')) av.push('"Estimado" y "Mixto" incluyen proyección: la comparación es contra el plan, no contra resultados cerrados.');
+  if(av.length) h += `<div class="alert-box" style="background:#FFF8E6;border:1px solid #F0D58A;border-radius:8px;padding:10px 14px;font-size:12.5px;margin-bottom:12px;">${av.map(a=>'⚠ '+a).join('<br>')}</div>`;
+
+  // ---- comparación A vs B ----
+  h += `<div class="viz-card"><h3 class="viz-h">Comparar dos meses</h3>
+    <div class="toolbar"><label style="font-size:12.5px;">Mes A: <select id="cmpA" style="font-size:12.5px;padding:5px 6px;">${opts(st.A,yms)}</select></label>
+    <label style="font-size:12.5px;">Mes B: <select id="cmpB" style="font-size:12.5px;padding:5px 6px;">${opts(st.B,yms)}</select></label>
+    <span style="font-size:12px;color:var(--text-mute);">Variación = (B − A) ÷ |A|. Verde = favorable para la caja, rojo = desfavorable.</span></div>`;
+  h += `<div class="table-scroll"><table class="grid" id="cmpTabAB"><thead><tr><th style="text-align:left;">Concepto</th>
+    <th>${mL(st.A)}<br><small>nominal Bs</small></th><th>${mL(st.B)}<br><small>nominal Bs</small></th><th>Var. nominal</th>`;
+  if(st.metodo!=='nom') h += `<th>${mL(st.A)}<br><small>${unit}</small></th><th>${mL(st.B)}<br><small>${unit}</small></th><th>Var. reexpresada</th><th>Efecto reexpresión (pp)</th>`;
+  h += `</tr></thead><tbody>`;
+  const notas = [];
+  CMP_METRICS.forEach(c=>{
+    const a = mA.nom[c.k], b = mB.nom[c.k], vn = cmpVar(a,b);
+    h += `<tr><td style="text-align:left;${c.k==='neto'||c.k==='fin'?'font-weight:700;':''}">${c.label}</td><td>${cmpFmt(a)}</td><td>${cmpFmt(b)}</td><td style="${cmpVarClass(vn,c.good)}">${cmpPct(vn)}</td>`;
+    if(st.metodo!=='nom'){
+      const ra = cmpValue(mA,c.k,st.metodo,st.base,meses), rb = cmpValue(mB,c.k,st.metodo,st.base,meses), vr = cmpVar(ra,rb);
+      h += `<td>${cmpFmt(ra)}</td><td>${cmpFmt(rb)}</td><td style="${cmpVarClass(vr,c.good)}">${cmpPct(vr)}</td><td>${(vn!==null&&vr!==null)? ((vr-vn)*100>0?'+':'')+((vr-vn)*100).toFixed(1)+' pp' : '—'}</td>`;
+      if(c.k==='cobros'||c.k==='pagos'){ if(vn!==null&&vr!==null) notas.push(`${c.k==='cobros'?'Los cobros':'Los pagos'} variaron <b>${cmpPct(vn)}</b> en Bs nominales y <b>${cmpPct(vr)}</b> en ${unit}.`); }
+    }
+    h += '</tr>';
+  });
+  h += `</tbody></table></div>`;
+  if(notas.length) h += `<p style="font-size:12.5px;margin:10px 0 0;">${notas.join(' ')} <span style="color:var(--text-mute)">(pp = puntos porcentuales; el efecto indica cuánto de la variación nominal se explica por la pérdida de valor de la moneda.)</span></p>`;
+  h += `</div>`;
+
+  // ---- gráfico ----
+  h += `<div class="viz-card"><h3 class="viz-h">Evolución mensual — <select id="cmpMetric" style="font-size:12.5px;padding:3px 6px;">${CMP_METRICS.map(c=>`<option value="${c.k}"${c.k===st.metric?' selected':''}>${c.label}</option>`).join('')}</select> <span style="font-weight:400;color:var(--text-mute);">(${st.metodo==='nom'?'Bs nominales':unit}) · barras tenues = mes parcial</span></h3>
+    <div class="viz-legend">${st.metodo==='inpc'||st.metodo==='tasa'? `<span><i style="background:#2a78d6"></i>Nominal (Bs)</span><span><i style="background:#eb6834"></i>${unit}</span>` : ''}</div>
+    <div id="cmpChart"></div></div>`;
+
+  // ---- tabla de todos los meses ----
+  h += `<div class="viz-card"><h3 class="viz-h">Todos los meses — ${st.metodo==='nom'? 'Bs nominales' : unit}</h3>
+    <div class="table-scroll"><table class="grid" id="cmpTabAll"><thead><tr><th style="text-align:left;min-width:230px;">Concepto</th>${meses.map(m=>`<th style="min-width:110px;">${m.label}<br><small>${m.estado}${m.partial?' · parcial':''}</small></th>`).join('')}</tr></thead><tbody>`;
+  CMP_METRICS.forEach(c=>{
+    h += `<tr><td style="text-align:left;${c.k==='neto'||c.k==='fin'?'font-weight:700;':''}">${c.label}</td>` + meses.map(m=>{ const v = cmpValue(m,c.k,st.metodo,st.base,meses); return `<td style="text-align:right;${v!==null&&v<0?'color:#c0392b;':''}">${cmpFmt(v)}</td>`; }).join('') + '</tr>';
+  });
+  h += `<tr><td style="text-align:left;color:var(--text-mute);">Tasa BCV promedio del mes (Bs/US$)</td>${meses.map(m=>`<td style="text-align:right;color:var(--text-mute);">${m.rate? m.rate.toFixed(2)+(m.missingRate?'*':'') : '—'}</td>`).join('')}</tr>`;
+  if(st.metodo==='inpc') h += `<tr><td style="text-align:left;color:var(--text-mute);">Índice de precios usado</td>${meses.map(m=>{ const c = cmpIndex(m.ym); return `<td style="text-align:right;color:var(--text-mute);">${c? c.v.toFixed(2)+(c.est?' (sup.)':'') : '—'}</td>`; }).join('')}</tr>`;
+  h += `</tbody></table></div><p class="hint" style="margin-top:6px;">* tasa promedio con semanas sin tasa. Los saldos (inicial/final) se reexpresan con la tasa de la primera/última semana del mes (US$) o con el índice del mes (Bs constantes): es una aproximación.</p></div>`;
+
+  // ---- índices de precios ----
+  h += `<details${st.metodo==='inpc'?' open':''} class="viz-card"><summary style="cursor:pointer;font-size:13px;font-weight:700;color:var(--navy);">Índice de precios (para el método "Bs constantes — índice de precios")</summary>
+    <p class="hint">Escriba el índice mensual publicado (por ejemplo el INPC del BCV) <b>exactamente como lo publica la fuente</b>; la herramienta solo usa su proporción entre meses. No se precargan valores. Si deja meses futuros en blanco, puede indicar una inflación mensual <i>supuesta</i> para extrapolarlos desde el último dato.</p>
+    <div class="toolbar"><label style="font-size:12.5px;">Inflación mensual supuesta (%) para meses sin índice: <input id="cmpInfl" type="number" step="0.1" min="0" value="${settings.inflSup!==undefined&&settings.inflSup!==null? settings.inflSup : ''}" placeholder="vacío = no extrapolar" style="width:130px;font-size:12.5px;padding:4px;"></label></div>
+    <div class="table-scroll"><table class="grid"><thead><tr>${meses.map(m=>`<th style="min-width:96px;">${m.label}</th>`).join('')}</tr></thead><tbody><tr>${meses.map(m=>`<td><input class="cmpIdx" data-ym="${m.ym}" type="number" step="any" value="${(settings.inpc[m.ym]!==undefined&&settings.inpc[m.ym]!==null)? settings.inpc[m.ym] : ''}" style="width:92px;font-size:12px;padding:3px;text-align:right;"></td>`).join('')}</tr></tbody></table></div></details>`;
+
+  h += `<p class="hint"><b>Cómo se calcula.</b> Nominal: suma de las semanas que inician en el mes (real si la semana está cerrada, estimado si no). <b>US$:</b> cada semana ÷ su tasa BCV y luego se suma (no se usa un promedio del mes). <b>Bs constantes (índice):</b> valor × índice del mes base ÷ índice del mes. <b>Bs constantes (tipo de cambio):</b> US$ del mes × tasa promedio del mes base; supone que el US$ conserva su poder de compra, por lo que es una referencia, no un índice oficial de inflación. Para efectos contables/fiscales (VEN-NIF, ajuste por inflación) valide el método e índices con su asesor.</p>`;
+  root.innerHTML = h;
+
+  cmpMesesChart(document.getElementById('cmpChart'), meses, st.metodo, st.base, st.metric);
+  const on = (id, fn)=>{ const el = document.getElementById(id); if(el) el.addEventListener('change', fn); };
+  on('cmpScope', e=>{ st.scope = e.target.value; renderComparar(); });
+  on('cmpMetodo', e=>{ st.metodo = e.target.value; renderComparar(); });
+  on('cmpBase', e=>{ st.base = e.target.value; renderComparar(); });
+  on('cmpA', e=>{ st.A = e.target.value; renderComparar(); });
+  on('cmpB', e=>{ st.B = e.target.value; renderComparar(); });
+  on('cmpMetric', e=>{ st.metric = e.target.value; renderComparar(); });
+  on('cmpInfl', e=>{ const v = e.target.value; settings.inflSup = v===''? null : Number(v); scheduleSaveToDrive(); renderComparar(); });
+  document.querySelectorAll('.cmpIdx').forEach(inp=> inp.addEventListener('change', e=>{
+    const v = e.target.value; if(v===''||Number(v)<=0){ delete settings.inpc[e.target.dataset.ym]; } else settings.inpc[e.target.dataset.ym] = Number(v);
+    scheduleSaveToDrive(); renderComparar();
+  }));
+}
 /* ================= INIT ================= */
 async function init(){
   document.getElementById('todayLabel').textContent = fmtDateLong(TODAY);
