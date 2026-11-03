@@ -146,6 +146,10 @@
   .bar-val{ width:190px; text-align:right; white-space:nowrap; }
   .grid2{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }
   @media (max-width:900px){ .grid2{ grid-template-columns:1fr; } .bar-lbl,.bar-val{ width:120px; } }
+  .sync-bar{ position:sticky; top:0; z-index:60; padding:7px 24px; font-size:12.5px; border-bottom:1px solid var(--border); }
+  .sync-bar .btn{ padding:3px 10px; font-size:11.5px; }
+  .sb-gray{ background:#EEF1F5; color:#4b5563; } .sb-green{ background:#E8F5EE; color:#1a6b43; } .sb-amber{ background:#FFF4DB; color:#8a5a00; }
+  .sb-red{ background:#FDECEA; color:#a12a1f; } .sb-blue{ background:#E6F0FC; color:#1c4f94; }
 </style>
 </head>
 <body>
@@ -170,9 +174,11 @@
   <button data-view="consolidado">Consolidado</button>
   <button data-view="indicadores">Indicadores</button>
   <button data-view="comparar">Comparar Meses</button>
+  <button data-view="clientes">Clientes</button>
   <button data-view="tasa">Tasa de Cambio (BCV)</button>
   <button data-view="historico">Histórico</button>
 </nav>
+<div id="syncBar" class="sync-bar sb-gray">Sin conectar a Drive.</div>
 
 <main>
 
@@ -194,6 +200,7 @@
         <span id="driveStatus" style="font-size:12.5px;color:var(--text-mute);">No conectado.</span>
       </div>
       <div id="driveFoldersInfo" style="margin-top:10px;font-size:12.5px;color:var(--text-mute);"></div>
+      <div id="driveInfo" style="margin-top:6px;font-size:12.5px;color:var(--text-mute);"></div>
       <div class="toolbar" style="margin-top:10px;">
         <button class="btn secondary small" id="btnDriveSync" disabled>↻ Sincronizar ahora con Drive</button>
       </div>
@@ -331,6 +338,14 @@
     </div>
   </section>
 
+  <section id="view-clientes" class="view">
+    <div class="panel">
+      <h2>Clientes (Cuentas por Cobrar)</h2>
+      <p class="hint">Administre aquí la lista de clientes de cada empresa. Alimenta las plantillas, la captura, el flujo y los indicadores. Los cambios se guardan en Drive con el resto de los datos.</p>
+      <div id="cliRoot"></div>
+    </div>
+  </section>
+
   <!-- ============ TASA DE CAMBIO ============ -->
   <section id="view-tasa" class="view">
     <div class="panel">
@@ -385,7 +400,7 @@
 
 </main>
 
-<footer class="app">Flujo de Caja Semanal · CP · WF · TB · SV — datos guardados en Google Drive · versión 2026-11-02 · v4 · compártalo solo con el equipo autorizado</footer>
+<footer class="app">Flujo de Caja Semanal · CP · WF · TB · SV — datos guardados en Google Drive · versión 2026-11-03 · v5 · compártalo solo con el equipo autorizado</footer>
 
 <!-- Modal: cerrar semana / cargar real -->
 <div class="modal-bg" id="modalBg">
@@ -432,19 +447,66 @@ const TESORERIA_SV = ['TRASPASOS INGRESOS','TRASPASOS EGRESOS','COMISION','GANAN
 const CONCEPTS = {
   CP: {
     NOMINA: NOMINA_FULL, CXP: CXP_FULL, IMPUESTOS: IMPUESTOS_CP, TESORERIA: TESORERIA_CP,
-    CXC: ['RDG INTERNATIONAL','ELITE BRAND','P&G- POLAR','POLAR','CERVECERÍA POLAR','PAVECA','SANTA TERESA',
-          'NATULAC','DERIVADOS ELECTRONICOS','DISMARKET','LABORATORIOS ELMOR','L´PRADO','TODOTICKET','GREEN PINE',
-          'SURVEY DE VENEZUELA, C.A','TRADE TRANDING, C.A','BCC','CHOCOLATE ST MORITZ','PURISSIMA','MULTI BRANDS',
-          'INVERSIONES SISALUD','NESTLE','CENTRAL MADEIRENSE']
+    CXC: ['RDG INTERNATIONAL',
+          'ELITE BRAND',
+          'P&G- POLAR',
+          'POLAR',
+          'CERVECERÍA POLAR',
+          'PAVECA',
+          'SANTA TERESA',
+          'NATULAC',
+          'DERIVADOS ELECTRONICOS',
+          'DISMARKET',
+          'LABORATORIOS ELMOR',
+          'L´PRADO',
+          'TODOTICKET',
+          'GREEN PINE',
+          'SURVEY DE VENEZUELA, C.A',
+          'TRADE TRANDING, C.A',
+          'BCC',
+          'CHOCOLATE ST MORITZ',
+          'PURISSIMA',
+          'MULTI BRANDS',
+          'INVERSIONES SISALUD',
+          'NESTLE',
+          'CENTRAL MADEIRENSE',
+          'EXCELSIOR GAMA',
+          'ASOC PARA LA COD',
+          'OTROS CLIENTES']
   },
   WF: {
     NOMINA: NOMINA_FULL, CXP: CXP_FULL, IMPUESTOS: IMPUESTOS_STD, TESORERIA: TESORERIA_WF,
-    CXC: ['SINDONI','SANTONI','PUIG','THE BEAUTY','PASTAS ALLEGRI','MONACA','MEGALABS','MIMESA',
-          'EMBUTIDOS ARCHUNA','LA GIRALDA','LABORATORIOS FARMA','BCC','CASA OLIVEIRA','DIVAR']
+    CXC: ['SINDONI',
+          'SANTONI',
+          'PUIG',
+          'THE BEAUTY STATION',
+          'PASTAS ALLEGRI',
+          'MONACA',
+          'MEGALABS',
+          'MIMESA',
+          'EMBUTIDOS ARCHUNA',
+          'LA GIRALDA',
+          'LABORATORIOS FARMA',
+          'BCC',
+          'CASA OLIVEIRA',
+          'DIVAR',
+          'LACTEOS DOÑA FLORA',
+          'OTROS CLIENTES']
   },
   TB: {
     NOMINA: NOMINA_FULL, CXP: CXP_FULL, IMPUESTOS: IMPUESTOS_STD, TESORERIA: TESORERIA_TB,
-    CXC: ['CAPRI','REGIONAL','ARROCERA 4','IND HERMO','KRON','GRUPO VENDING SOLUCIONES']
+    CXC: ['CAPRI',
+          'REGIONAL',
+          'ARROCERA 4',
+          'IND HERMO',
+          'KRON',
+          'GRUPO VENDING SOLUCIONES',
+          'IBERIA',
+          'ALIMENTOS Y SERVICIOS CALAR',
+          'EL TUNAL',
+          'PRODUCTOS ALIMEX',
+          'ALIVE',
+          'OTROS CLIENTES']
   },
   SV: {
     NOMINA: ['NÓMINA ADMINISTRATIVA','NÓMINA PLATA','CT ADMINISTRATIVO','PRÉSTAMOS EMPLEADOS','COMISIONES',
@@ -483,88 +545,163 @@ let folderIds = {capturas:null, historico:null, datos:null};
 let stateFileId = null;
 let saveTimer = null;
 
-function driveHeaders(extra){ return Object.assign({Authorization:`Bearer ${accessToken}`}, extra||{}); }
+/* ================= GOOGLE DRIVE: CAPA DE ACCESO CONFIABLE (v5) =================
+   - Toda llamada pasa por driveFetch: detecta sesión vencida (401), fallas de red y errores de Drive.
+   - Cada guardado se verifica y, antes de escribir, se compara la fecha del archivo en Drive con la que se cargó
+     (si otra persona/computadora guardó después, NO se sobrescribe sin preguntar).
+   - Si la lectura falla, la herramienta NO queda "conectada": así no puede pisar el archivo real con datos vacíos.
+   - La barra de estado (#syncBar) muestra siempre si lo que ve está guardado. */
+let driveUser = null, tokenExpiresAt = 0, stateModified = null, stateDupes = [];
+let dirty = false, dirtySeq = 0, saving = false, saveAgain = false, saveErr = null, lastSavedAt = null, remoteNewer = null, unsavedNoConn = false;
 
-async function driveFindByName(name, isFolder){
+function driveHeaders(extra){ return Object.assign({Authorization:`Bearer ${accessToken}`}, extra||{}); }
+async function driveFetch(url, opts){
+  opts = opts || {};
+  if(!accessToken){ throw Object.assign(new Error('No hay sesión de Google activa.'), {kind:'auth'}); }
+  let res;
+  try{ res = await fetch(url, Object.assign({}, opts, {headers: driveHeaders(opts.headers)})); }
+  catch(e){ throw Object.assign(new Error('Sin conexión con Google (revise internet).'), {kind:'net'}); }
+  if(res.status===401){ authExpired(); throw Object.assign(new Error('La sesión de Google venció.'), {kind:'auth'}); }
+  if(!res.ok){
+    let t=''; try{ t = await res.text(); }catch(_){}
+    throw Object.assign(new Error('Drive respondió '+res.status+(t? ': '+t.replace(/\s+/g,' ').slice(0,140) : '')), {kind:'http', status:res.status});
+  }
+  return res;
+}
+function authExpired(){ tokenExpiresAt = 0; if(driveReady){ saveErr = {kind:'auth', message:'La sesión de Google venció.'}; } renderSyncBar(); }
+
+async function driveFindAllByName(name, isFolder){
   const mimeQ = isFolder? " and mimeType='application/vnd.google-apps.folder'" : '';
   const q = encodeURIComponent(`name='${name.replace(/'/g,"\\'")}'${mimeQ} and trashed=false`);
-  const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,modifiedTime)&spaces=drive`, {headers:driveHeaders()});
-  const data = await res.json();
-  return (data.files && data.files[0]) || null;
+  const res = await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,modifiedTime,parents)&orderBy=modifiedTime%20desc&spaces=drive`);
+  return (await res.json()).files || [];
 }
+async function driveFindByName(name, isFolder){ const l = await driveFindAllByName(name, isFolder); return l[0] || null; }
 async function driveCreateFolder(name){
-  const res = await fetch('https://www.googleapis.com/drive/v3/files', {
-    method:'POST', headers:driveHeaders({'Content-Type':'application/json'}),
-    body: JSON.stringify({name, mimeType:'application/vnd.google-apps.folder'})
-  });
+  const res = await driveFetch('https://www.googleapis.com/drive/v3/files', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({name, mimeType:'application/vnd.google-apps.folder'})});
   return await res.json();
 }
-async function driveGetOrCreateFolder(name){
-  let f = await driveFindByName(name, true);
-  if(!f) f = await driveCreateFolder(name);
-  return f;
-}
+async function driveGetOrCreateFolder(name){ let f = await driveFindByName(name, true); if(!f) f = await driveCreateFolder(name); return f; }
 async function driveListFilesInFolder(folderId){
   const q = encodeURIComponent(`'${folderId}' in parents and trashed=false`);
-  const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,modifiedTime)&orderBy=modifiedTime desc`, {headers:driveHeaders()});
-  const data = await res.json();
-  return data.files||[];
+  const res = await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,modifiedTime)&orderBy=modifiedTime%20desc&pageSize=200`);
+  return (await res.json()).files || [];
 }
-async function driveDownloadBytes(fileId){
-  const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {headers:driveHeaders()});
-  return await res.arrayBuffer();
-}
-async function driveDownloadText(fileId){
-  const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {headers:driveHeaders()});
-  return await res.text();
-}
+async function driveDownloadBytes(fileId){ const res = await driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`); return await res.arrayBuffer(); }
+async function driveDownloadText(fileId){ const res = await driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`); return await res.text(); }
+async function driveGetMeta(fileId){ const res = await driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,name,modifiedTime`); return await res.json(); }
 async function driveCreateFileMultipart(folderId, filename, blob, mimeType){
   const metadata = {name:filename, parents:[folderId]};
   const form = new FormData();
   form.append('metadata', new Blob([JSON.stringify(metadata)], {type:'application/json'}));
   form.append('file', blob);
-  const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
-    method:'POST', headers:driveHeaders(), body: form
-  });
+  const res = await driveFetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,modifiedTime', {method:'POST', body: form});
   return await res.json();
 }
 async function driveUpdateFileContent(fileId, obj){
-  await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
-    method:'PATCH', headers:driveHeaders({'Content-Type':'application/json'}), body: JSON.stringify(obj)
-  });
+  const res = await driveFetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media&fields=id,modifiedTime`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify(obj)});
+  return await res.json();
+}
+async function driveAbout(){ const res = await driveFetch('https://www.googleapis.com/drive/v3/about?fields=user(emailAddress,displayName)'); return (await res.json()).user || null; }
+// Copia diaria de seguridad del archivo de datos en "Historico de flujo de caja" (una por día, no se borra nada).
+async function driveBackupDaily(){
+  try{
+    const nm = 'respaldo_estado_'+isoDateStr(TODAY)+'.json';
+    const q = encodeURIComponent(`name='${nm}' and '${folderIds.historico}' in parents and trashed=false`);
+    const ex = (await (await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id)`)).json()).files || [];
+    if(ex.length) return;
+    await driveFetch(`https://www.googleapis.com/drive/v3/files/${stateFileId}/copy`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({name:nm, parents:[folderIds.historico]})});
+  }catch(e){ console.warn('respaldo diario no creado', e); }
 }
 
+/* ---------- Autenticación ---------- */
+function setDriveStatus(t){ const el = document.getElementById('driveStatus'); if(el) el.textContent = t; }
 function initGoogleAuth(clientId){
   tokenClient = google.accounts.oauth2.initTokenClient({
     client_id: clientId,
     scope: DRIVE_SCOPE,
     callback: async (resp)=>{
-      if(resp.error){ document.getElementById('driveStatus').textContent = 'Error al conectar: '+resp.error; return; }
+      if(resp.error){ setDriveStatus('Error al conectar: '+resp.error); return; }
       accessToken = resp.access_token;
+      tokenExpiresAt = Date.now() + (Number(resp.expires_in)||3600)*1000 - 60000;
+      if(driveReady){ // reconexión: NO se recarga nada, se conservan los cambios en pantalla y se reintenta guardar
+        if(saveErr && saveErr.kind==='auth') saveErr = null;
+        setDriveStatus('✓ Sesión de Google renovada ('+new Date().toLocaleTimeString('es-VE')+').');
+        renderSyncBar(); if(dirty) flushSave(); return;
+      }
       await onDriveConnected();
     }
   });
 }
+function reconectarSesion(){
+  const clientId = localStorage.getItem('fc_client_id');
+  if(!clientId){ alert('Primero pegue y guarde su Google Client ID (pestaña Google Drive).'); return; }
+  if(!tokenClient) initGoogleAuth(clientId);
+  tokenClient.requestAccessToken({prompt: ''});
+}
+
+/* ---------- Copia local (por si algo falla): descarga un JSON con todo lo que hay en pantalla ---------- */
+function descargarCopiaLocal(motivo){
+  try{
+    const blob = new Blob([JSON.stringify(currentStateObj())], {type:'application/json'});
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+    a.download = `FC_copia_local_${isoDateStr(TODAY)}_${new Date().toTimeString().slice(0,5).replace(':','')}.json`;
+    document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 500);
+    return true;
+  }catch(e){ console.error(e); return false; }
+}
+
+/* ---------- Conexión ---------- */
 async function onDriveConnected(){
-  document.getElementById('driveStatus').textContent = 'Conectado. Preparando carpetas...';
-  const capturas = await driveGetOrCreateFolder(CARPETA_CAPTURAS);
-  const historico = await driveGetOrCreateFolder(CARPETA_HISTORICO);
-  const datos = await driveGetOrCreateFolder(CARPETA_DATOS);
-  folderIds = {capturas: capturas.id, historico: historico.id, datos: datos.id};
-  let stateFile = await driveFindByName(ARCHIVO_ESTADO, false);
-  if(!stateFile){
-    const initial = emptyState();
-    stateFile = await driveCreateFileMultipart(datos.id, ARCHIVO_ESTADO, new Blob([JSON.stringify(initial)],{type:'application/json'}), 'application/json');
-    Object.assign({}, initial);
+  if(dirty || unsavedNoConn){
+    if(!confirm('Hay cambios en pantalla que NO se han guardado en Drive.\n\nSi continúa, se cargarán los datos de Drive y esos cambios se perderán (antes se descargará una copia de seguridad en su computador).\n\n¿Continuar?')){ setDriveStatus('Conexión cancelada: sus cambios siguen en pantalla (sin guardar).'); return; }
+    if(!descargarCopiaLocal('antes de conectar') && !confirm('No se pudo descargar la copia de seguridad. ¿Continuar de todos modos y perder esos cambios?')){ setDriveStatus('Conexión cancelada: sus cambios siguen en pantalla (sin guardar).'); return; }
   }
-  stateFileId = stateFile.id;
-  await loadStateFromDrive();
-  driveReady = true;
-  document.getElementById('driveStatus').textContent = '✓ Conectado y sincronizado con Google Drive.';
-  document.getElementById('btnDriveSync').disabled = false;
-  document.getElementById('driveFoldersInfo').innerHTML =
-    `Carpetas listas: <b>${CARPETA_CAPTURAS}</b>, <b>${CARPETA_HISTORICO}</b> y <b>${CARPETA_DATOS}</b> (datos internos de la app — no borrar).`;
+  setDriveStatus('Conectado. Preparando carpetas...');
+  try{
+    driveUser = await driveAbout().catch(()=>null);
+    const capturas = await driveGetOrCreateFolder(CARPETA_CAPTURAS);
+    const historico = await driveGetOrCreateFolder(CARPETA_HISTORICO);
+    const datos = await driveGetOrCreateFolder(CARPETA_DATOS);
+    folderIds = {capturas: capturas.id, historico: historico.id, datos: datos.id};
+    const all = await driveFindAllByName(ARCHIVO_ESTADO, false);
+    stateDupes = all.slice(1);
+    let stateFile = all[0];
+    if(!stateFile){
+      stateFile = await driveCreateFileMultipart(datos.id, ARCHIVO_ESTADO, new Blob([JSON.stringify(emptyState())],{type:'application/json'}), 'application/json');
+    }
+    stateFileId = stateFile.id;
+    await loadStateFromDrive();               // si falla, lanza error y NO se marca como conectado
+    driveReady = true; dirty = false; unsavedNoConn = false; saveErr = null; remoteNewer = null;
+    setDriveStatus('✓ Sincronizado con Drive ('+new Date().toLocaleTimeString('es-VE')+').');
+    document.getElementById('btnDriveSync').disabled = false;
+    document.getElementById('driveFoldersInfo').innerHTML =
+      `Carpetas listas: <b>${CARPETA_CAPTURAS}</b>, <b>${CARPETA_HISTORICO}</b> y <b>${CARPETA_DATOS}</b> (datos internos de la app — no borrar).`;
+    rerenderTodo();
+    driveBackupDaily();
+  }catch(e){
+    console.error(e); driveReady = false;
+    setDriveStatus('✗ No se pudo cargar desde Drive: '+(e.message||e)+' — Sus datos en Drive NO se modificaron. Vuelva a intentar.');
+  }
+  renderSyncBar();
+}
+function rerenderTodo(){
+  aplicarClientes();
   renderDeptTabs(); renderCompanyTabsCaptura(); renderCapturaTable(); renderBancos();
+  const act = document.querySelector('nav.tabs button.active'); if(act && act.dataset.view!=='drive') act.click();
+}
+async function recargarDesdeDrive(){
+  if(!driveReady) return;
+  if(dirty || unsavedNoConn){
+    if(!confirm('Tiene cambios sin guardar. Si recarga desde Drive se perderán (se descargará antes una copia de seguridad). ¿Recargar?')) return;
+    if(!descargarCopiaLocal('antes de recargar') && !confirm('No se pudo descargar la copia de seguridad. ¿Recargar de todos modos y perder esos cambios?')) return;
+  }
+  try{
+    await loadStateFromDrive(); dirty = false; unsavedNoConn = false; saveErr = null; remoteNewer = null;
+    setDriveStatus('✓ Sincronizado con Drive ('+new Date().toLocaleTimeString('es-VE')+').');
+    rerenderTodo();
+  }catch(e){ console.error(e); setDriveStatus('✗ No se pudo recargar: '+(e.message||e)+' — se conservan los datos en pantalla.'); }
+  renderSyncBar();
 }
 document.getElementById('btnDriveSignIn').addEventListener('click', ()=>{
   const clientId = localStorage.getItem('fc_client_id');
@@ -574,17 +711,93 @@ document.getElementById('btnDriveSignIn').addEventListener('click', ()=>{
 });
 document.getElementById('btnSaveClientId').addEventListener('click', ()=>{
   const v = document.getElementById('clientIdInput').value.trim();
-  if(!v){ return; }
+  if(!v){ alert('Pegue el Client ID.'); return; }
   localStorage.setItem('fc_client_id', v);
-  initGoogleAuth(v);
-  document.getElementById('driveStatus').textContent = 'Client ID guardado. Presione "Conectar con Google Drive".';
+  if(window.google && google.accounts) initGoogleAuth(v);
+  setDriveStatus('Client ID guardado. Presione "Conectar con Google Drive".');
 });
-document.getElementById('btnDriveSync').addEventListener('click', async ()=>{
+document.getElementById('btnDriveSync').addEventListener('click', recargarDesdeDrive);
+
+/* ---------- Guardado verificado ---------- */
+async function flushSave(force){
   if(!driveReady) return;
-  await loadStateFromDrive();
-  renderDeptTabs(); renderCompanyTabsCaptura(); renderCapturaTable(); renderBancos();
-  document.getElementById('driveStatus').textContent = '✓ Sincronizado con Drive ('+new Date().toLocaleTimeString('es-VE')+').';
-});
+  if(saving){ saveAgain = true; return; }
+  saving = true; renderSyncBar();
+  const mySeq = dirtySeq;
+  try{
+    if(!force){
+      const meta = await driveGetMeta(stateFileId);
+      if(stateModified && meta.modifiedTime !== stateModified) throw Object.assign(new Error('Otra persona o computadora guardó cambios en Drive a las '+new Date(meta.modifiedTime).toLocaleTimeString('es-VE')+'.'), {kind:'conflict', remote:meta.modifiedTime});
+    }
+    const r = await driveUpdateFileContent(stateFileId, Object.assign(currentStateObj(), {_meta:{savedAt:new Date().toISOString(), app:'v5'}}));
+    stateModified = r.modifiedTime; lastSavedAt = new Date(); saveErr = null; remoteNewer = null; dirty = (dirtySeq !== mySeq);
+  }catch(e){ saveErr = {kind:e.kind||'http', message:e.message||String(e), remote:e.remote}; console.error('fallo al guardar en Drive', e); }
+  saving = false;
+  if((saveAgain || dirty) && !saveErr){ saveAgain = false; clearTimeout(saveTimer); saveTimer = setTimeout(()=>flushSave(), 300); }
+  renderSyncBar();
+}
+// Guardado diferido: junta cambios rápidos en una sola escritura verificada.
+function scheduleSaveToDrive(){
+  dirtySeq++; dirty = true;
+  if(!driveReady){ unsavedNoConn = true; renderSyncBar(); return; }
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(()=>flushSave(), 900);
+  renderSyncBar();
+}
+async function checkRemote(){
+  if(!driveReady || saving || !accessToken || (saveErr && saveErr.kind==='auth')) return;
+  try{ const m = await driveGetMeta(stateFileId); remoteNewer = (stateModified && m.modifiedTime !== stateModified)? m.modifiedTime : null; }catch(e){}
+  renderSyncBar();
+}
+
+/* ---------- Barra de estado ---------- */
+function renderSyncBar(){
+  const el = document.getElementById('syncBar'); if(!el) return;
+  const hm = d => d.toLocaleTimeString('es-VE',{hour:'2-digit',minute:'2-digit'});
+  const btn = (id,txt)=>`<button class="btn small" data-sync="${id}" style="margin-left:8px;">${txt}</button>`;
+  let cls='sb-gray', html='';
+  const who = driveUser && driveUser.emailAddress? ` · cuenta ${escHtml(driveUser.emailAddress)}` : '';
+  const minsLeft = tokenExpiresAt? Math.floor((tokenExpiresAt-Date.now())/60000) : null;
+  if(!driveReady){
+    if(unsavedNoConn){ cls='sb-red'; html = `⚠ <b>No está conectado a Drive: lo que cargue o cambie NO se está guardando.</b> Conecte en la pestaña Google Drive ${btn('ir','Ir a Google Drive')}`; }
+    else { cls='sb-gray'; html = `Sin conectar a Drive: no se muestran datos guardados. ${btn('ir','Ir a Google Drive')}`; }
+  } else if(saveErr){
+    cls='sb-red';
+    if(saveErr.kind==='auth') html = `⚠ <b>No guardado: la sesión de Google venció.</b> Sus cambios siguen en pantalla; reconecte (no se pierde nada). ${btn('reconectar','Reconectar')}${btn('copia','Descargar copia')}`;
+    else if(saveErr.kind==='conflict') html = `⚠ <b>No guardado:</b> ${escHtml(saveErr.message)} Para no pisar su trabajo, elija: ${btn('recargar','Cargar lo de Drive (descarta lo mío)')}${btn('forzar','Guardar lo mío encima')}${btn('copia','Descargar copia de lo mío')}`;
+    else html = `⚠ <b>No guardado:</b> ${escHtml(saveErr.message)} ${btn('reintentar','Reintentar')}${btn('copia','Descargar copia')}`;
+  } else if(saving){ cls='sb-amber'; html = 'Guardando en Drive…'; }
+  else if(dirty){ cls='sb-amber'; html = 'Cambios por guardar…'; }
+  else if(remoteNewer){ cls='sb-blue'; html = `Hay datos más recientes en Drive (guardados a las ${hm(new Date(remoteNewer))}). Esta pantalla está desactualizada. ${btn('recargar','Actualizar ahora')}`; }
+  else { cls='sb-green'; html = `✓ Guardado en Drive${lastSavedAt? ' a las '+hm(lastSavedAt) : (stateModified? ' · datos de Drive del '+new Date(stateModified).toLocaleString('es-VE',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '')}${who}`; }
+  if(driveReady && !saveErr && minsLeft!==null && minsLeft<=5){ cls = (cls==='sb-green'||cls==='sb-gray')? 'sb-amber' : cls; html += ` · <b>la sesión de Google vence en ${Math.max(0,minsLeft)} min</b> ${btn('reconectar','Renovar sesión')}`; }
+  if(driveReady && stateDupes.length) html += ` · ⚠ hay ${stateDupes.length} archivo(s) más con el nombre ${ARCHIVO_ESTADO} en su Drive (se usa el más reciente)`;
+  el.className = 'sync-bar '+cls; el.innerHTML = html;
+  el.querySelectorAll('button[data-sync]').forEach(b=> b.onclick = ()=>{
+    const a = b.dataset.sync;
+    if(a==='ir'){ const t = document.querySelector('nav.tabs button[data-view="drive"]'); if(t) t.click(); }
+    else if(a==='reconectar') reconectarSesion();
+    else if(a==='copia') descargarCopiaLocal('manual');
+    else if(a==='reintentar'){ saveErr = null; flushSave(); }
+    else if(a==='forzar'){ if(confirm('Esto reemplaza en Drive lo que guardó la otra persona/computadora por lo que ve en esta pantalla. ¿Seguro?')){ saveErr = null; flushSave(true); } }
+    else if(a==='recargar'){ saveErr = null; recargarDesdeDrive(); }
+  });
+  const info = document.getElementById('driveInfo');
+  if(info){
+    let t = '';
+    if(driveReady){
+      t += `Cuenta conectada: <b>${driveUser? escHtml(driveUser.emailAddress||driveUser.displayName||'—') : '—'}</b> · Archivo de datos modificado por última vez: <b>${stateModified? new Date(stateModified).toLocaleString('es-VE') : '—'}</b>.`;
+      if(stateDupes.length) t += `<br><span style="color:#c0392b;">⚠ Hay ${stateDupes.length} archivo(s) adicional(es) llamado(s) ${ARCHIVO_ESTADO} (modificados: ${stateDupes.map(d=>new Date(d.modifiedTime).toLocaleDateString('es-VE')).join(', ')}). La herramienta usa el más reciente; elimine o mueva los demás para evitar confusiones.</span>`;
+    }
+    info.innerHTML = t;
+  }
+}
+window.addEventListener('beforeunload', e=>{ if(dirty || saving || unsavedNoConn){ e.preventDefault(); e.returnValue = ''; return ''; } });
+document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) checkRemote(); });
+window.addEventListener('focus', ()=>checkRemote());
+setInterval(()=>{ renderSyncBar(); }, 30000);
+setInterval(()=>{ checkRemote(); }, 120000);
+
 
 /* ================= STATE ================= */
 let estimates = {};   // estimates[empresa][depto][concepto][weekKey] = number
@@ -611,10 +824,12 @@ function emptyState(){
   });
   return {estimates:{}, actuals:{}, closedMap:{}, tcDiario:{}, tcSemanal:{}, openingBalances:ob, bankHistory:bh};
 }
-async function loadStateFromDrive(){
-  try{
+async function loadStateFromDrive(){   // lanza error si no puede leer (no deja datos a medias ni marca "conectado")
+  {
+    const meta = await driveGetMeta(stateFileId);
     const text = await driveDownloadText(stateFileId);
-    const s = JSON.parse(text||'{}');
+    let s = {};
+    if(text && text.trim()){ try{ s = JSON.parse(text); }catch(e){ throw new Error('el archivo de datos en Drive no se pudo interpretar (JSON dañado); no se cargó para no sobrescribirlo'); } }
     estimates = s.estimates||{};
     actuals = s.actuals||{};
     closedMap = s.closedMap||{};
@@ -626,6 +841,7 @@ async function loadStateFromDrive(){
     migrarIGTF();
     settings = Object.assign({minSaldo:{}, horizonte:13}, s.settings||{});
     settings.minSaldo = Object.assign({CP:0,WF:0,TB:0,SV:0}, settings.minSaldo||{});
+    aplicarClientes(); migrarClientes();
     // Migración desde la versión anterior (un solo saldo "actual" por banco, sin historial por fecha)
     // o inicialización si nunca se ha guardado nada para una empresa.
     const anchorDate = isoDateStr(TODAY);
@@ -641,19 +857,11 @@ async function loadStateFromDrive(){
         bankHistory[e]['Provincial'][anchorDate] = openingBalances[e] ?? OPENING_BALANCE_DEFAULT[e] ?? 0;
       }
     }
-  }catch(e){ console.error('no se pudo leer el estado de Drive', e); }
+    stateModified = meta.modifiedTime;
+  }
 }
 function currentStateObj(){
   return {estimates, actuals, closedMap, tcDiario, tcSemanal, openingBalances, bankHistory, importLog, settings};
-}
-// Guardado con "debounce": junta cambios rápidos en una sola escritura a Drive.
-function scheduleSaveToDrive(){
-  if(!driveReady) return; // sin conexión todavía no hay dónde guardar
-  clearTimeout(saveTimer);
-  saveTimer = setTimeout(async ()=>{
-    try{ await driveUpdateFileContent(stateFileId, currentStateObj()); }
-    catch(e){ console.error('fallo al guardar en Drive', e); }
-  }, 900);
 }
 // Estas funciones se mantienen con los mismos nombres que usa el resto del código;
 // ahora todas apuntan al mismo guardado combinado hacia Drive.
@@ -854,6 +1062,7 @@ document.querySelectorAll('nav.tabs button').forEach(btn=>{
     if(btn.dataset.view==='cierre') renderCierre();
     if(btn.dataset.view==='indicadores') renderIndicadores();
     if(btn.dataset.view==='comparar') renderComparar();
+    if(btn.dataset.view==='clientes') renderClientes();
     if(btn.dataset.view==='empresa') renderProyEmpresa();
     if(btn.dataset.view==='consolidado') renderConsolidado();
     if(btn.dataset.view==='tasa') renderTC();
@@ -1108,7 +1317,7 @@ function applyEstimatesWorkbook(wb, deptKey){
     if(weekRowIdx === -1){ hojasSinClave.push(empresa); continue; }
     const weekRow = aoa[weekRowIdx];
     const conceptos = CONCEPTS[empresa][deptKey] || [];
-    const conceptIndex = {}; conceptos.forEach(c=>conceptIndex[normConcept(c)]=c);
+    const conceptIndex = {}; conceptos.forEach(c=>conceptIndex[normConcept(c)]=c); clienteAliasApply(conceptIndex, empresa, deptKey, conceptos);
     const vistos = new Set(), desconocidos = [];
     const weekKeys = weekRow.slice(1).filter(k=>k).map(k=>String(k).trim()).sort();
     if(weekKeys.length){
@@ -1162,7 +1371,7 @@ function applyRealsWorkbook(wb, deptKey, weekKey){
     if(idx === -1){ notes.push(`${empresa}: no se encontró la fila técnica "semana_real"; pestaña omitida.`); continue; }
     if(String(aoa[idx][1]||'').trim() !== weekKey){ notes.push(`${empresa}: la pestaña corresponde a otra semana (${escHtml(String(aoa[idx][1]))}); omitida.`); continue; }
     const conceptos = CONCEPTS[empresa][deptKey] || [];
-    const conceptIndex = {}; conceptos.forEach(c=>conceptIndex[normConcept(c)]=c);
+    const conceptIndex = {}; conceptos.forEach(c=>conceptIndex[normConcept(c)]=c); clienteAliasApply(conceptIndex, empresa, deptKey, conceptos);
     const provistos = {}, desconocidos = [], noNum = [];
     for(let r=idx+2; r<aoa.length; r++){
       const row = aoa[r];
@@ -1285,7 +1494,7 @@ async function driveImportAll(statusEl, reportEl){
     if(!items.length){ statusEl.textContent = `No hay plantillas válidas en "${CARPETA_CAPTURAS}".`; return; }
     await importFiles(items, statusEl, reportEl);
     if(omitidos.length) reportEl.insertAdjacentHTML('beforeend', `<div style="font-size:12px;color:var(--text-mute);margin:6px 0;">Omitidos: ${omitidos.map(escHtml).join(' · ')}</div>`);
-  }catch(err){ console.error(err); statusEl.textContent = 'Error consultando Drive. Verifique la conexión en la pestaña "Google Drive".'; }
+  }catch(err){ console.error(err); statusEl.textContent = 'Error consultando Drive: '+(err.message||err)+(err.kind==='auth'? ' — use "Reconectar" en la barra superior.' : ''); }
 }
 document.getElementById('btnImportarTodoDrive').addEventListener('click', ()=>driveImportAll(document.getElementById('importStatus'), document.getElementById('importReport')));
 document.getElementById('btnImportarRealesDrive').addEventListener('click', ()=>driveImportAll(document.getElementById('cierreStatus'), document.getElementById('cierreReport')));
@@ -2913,6 +3122,266 @@ function renderComparar(){
     scheduleSaveToDrive(); renderComparar();
   }));
 }
+/* ================= CLIENTES: administración de la lista de Cuentas por Cobrar ================= */
+// La lista vive en settings.clientes (se guarda en Drive con el resto). Si no existe, se usa la lista de fábrica de CONCEPTS.
+// Renombrar o trasladar un cliente MUEVE sus datos (estimados y reales) para que nunca queden montos fuera del flujo.
+const CLIENTES_ALIAS_DEFAULT = {WF:{'THE BEAUTY':'THE BEAUTY STATION'}};   // nombre anterior → nombre vigente
+const cliState = {pending:null, preview:null};
+function cleanName(s){ return String(s===null||s===undefined? '' : s).replace(/\s+/g,' ').trim().toUpperCase(); }
+function aliasMap(emp){ return Object.assign({}, CLIENTES_ALIAS_DEFAULT[emp]||{}, ((settings.clienteAlias||{})[emp])||{}); }
+// Importación de plantillas: un cliente que cambió de nombre se reconoce por su nombre anterior.
+function clienteAliasApply(conceptIndex, emp, deptKey, conceptos){
+  if(deptKey!=='CXC') return;
+  const al = aliasMap(emp);
+  Object.keys(al).forEach(old=>{
+    const t = conceptos.find(c=>normConcept(c)===normConcept(al[old]));
+    if(t && !conceptIndex[normConcept(old)]) conceptIndex[normConcept(old)] = t;
+  });
+}
+const CXC_FABRICA = Object.fromEntries(EMPRESAS.map(e=>[e, CONCEPTS[e].CXC.slice()]));   // lista de fábrica (la del código)
+function aplicarClientes(){
+  const cl = settings.clientes || {};
+  EMPRESAS.forEach(e=>{ CONCEPTS[e].CXC = Array.isArray(cl[e])? cl[e].slice() : CXC_FABRICA[e].slice(); });
+}
+function persistClientes(accion){
+  settings.clientes = {}; EMPRESAS.forEach(e=> settings.clientes[e] = CONCEPTS[e].CXC.slice());
+  settings.clientesLog = (settings.clientesLog||[]).concat([{f:new Date().toISOString(), a:accion}]).slice(-60);
+  scheduleSaveToDrive();
+  try{ renderCapturaTable(); }catch(e){}
+}
+function setAlias(emp, viejo, nuevo){
+  settings.clienteAlias = settings.clienteAlias||{}; settings.clienteAlias[emp] = settings.clienteAlias[emp]||{};
+  settings.clienteAlias[emp][viejo] = nuevo;
+}
+// Mueve (o elimina si destino vacío) los datos de un cliente. Devuelve cuántas celdas movió.
+function moveClienteData(emp, from, to){
+  let n = 0;
+  [estimates, actuals].forEach(M=>{
+    const node = ((M[emp]||{}).CXC)||null; if(!node || !node[from]) return;
+    const src = node[from];
+    if(to && to!==from){
+      node[to] = node[to]||{};
+      Object.keys(src).forEach(wk=>{ const v = src[wk]; if(v===null||v===undefined) return; node[to][wk] = (Number(node[to][wk])||0) + Number(v); n++; });
+    }
+    delete node[from];
+  });
+  return n;
+}
+function clienteResumen(emp, name){
+  const f = M=>{ const o = (((M[emp]||{}).CXC||{})[name])||{}; let n=0, t=0; Object.keys(o).forEach(k=>{ const v = Number(o[k]); if(v){ n++; t+=v; } }); return {n,t}; };
+  return {est:f(estimates), real:f(actuals)};
+}
+function clientesHuerfanos(emp){
+  const lista = new Set((CONCEPTS[emp].CXC||[]).map(normConcept)), out = {};
+  [estimates, actuals].forEach(M=>{ const node = ((M[emp]||{}).CXC)||{}; Object.keys(node).forEach(k=>{
+    if(lista.has(normConcept(k))) return; const o = node[k]||{}; let n=0,t=0; Object.keys(o).forEach(w=>{ const v=Number(o[w]); if(v){ n++; t+=v; } });
+    if(n){ out[k] = out[k]||{name:k,n:0,t:0}; out[k].n += n; out[k].t += t; } }); });
+  return Object.values(out);
+}
+// Datos con nombre anterior (renombres de fábrica) → nombre vigente. Se ejecuta al cargar desde Drive.
+function migrarClientes(){
+  EMPRESAS.forEach(e=>{
+    const al = aliasMap(e), cur = new Set((CONCEPTS[e].CXC||[]).map(normConcept));
+    Object.keys(al).forEach(old=>{ if(cur.has(normConcept(al[old])) && !cur.has(normConcept(old))){
+      const tgt = CONCEPTS[e].CXC.find(c=>normConcept(c)===normConcept(al[old]));
+      const keys = new Set(); [estimates,actuals].forEach(M=>Object.keys((((M[e]||{}).CXC)||{})).forEach(k=>{ if(normConcept(k)===normConcept(old)) keys.add(k); }));
+      keys.forEach(k=> moveClienteData(e, k, tgt));
+    }});
+  });
+}
+
+/* ---------- Pantalla ---------- */
+function cliLista(emp){ return CONCEPTS[emp].CXC; }
+function fmtN0(n){ return Math.round(n).toLocaleString('en-US'); }
+function renderClientes(){
+  const root = document.getElementById('cliRoot'); if(!root) return;
+  let h = `<div class="toolbar">
+      <button class="btn small" id="cliExport">⬇ Exportar lista a Excel</button>
+      <label class="btn accent small">⬆ Cargar lista desde Excel<input type="file" id="cliImport" accept=".xlsx,.xls" style="display:none;"></label>
+      <span style="font-size:12px;color:var(--text-mute);">Formato: una columna por empresa con encabezado "Clientes CP", "Clientes WF", "Clientes TB", "Clientes SV" (igual al archivo que usted entregó).</span>
+    </div><div id="cliStatus" style="font-size:12.5px;margin:6px 0;"></div>`;
+  // datos que no pertenecen a ningún cliente de la lista
+  const hu = []; EMPRESAS.forEach(e=>clientesHuerfanos(e).forEach(x=>hu.push({e, ...x})));
+  if(hu.length){
+    h += `<div style="background:#FDECEA;border:1px solid #E8A39B;border-radius:8px;padding:10px 14px;font-size:12.5px;margin-bottom:12px;">⚠ <b>Hay montos de clientes que ya no están en la lista y por eso NO entran al flujo.</b> Traslade o elimine esos datos:
+      <table class="grid" style="margin-top:6px;"><tbody>${hu.map((x,i)=>`<tr><td>${x.e}</td><td style="text-align:left;">${escHtml(x.name)}</td><td>${x.n} celda(s) · ${fmtN0(x.t)} Bs</td>
+      <td><select data-hu="${i}" style="font-size:12px;"><option value="">Trasladar a…</option>${cliLista(x.e).map(c=>`<option>${escHtml(c)}</option>`).join('')}<option value="__DEL__">— Eliminar sus datos —</option></select></td></tr>`).join('')}</tbody></table></div>`;
+  }
+  if(cliState.preview) h += renderClientesPreview();
+  h += `<div class="grid2">`;
+  EMPRESAS.forEach(e=>{
+    const lista = cliLista(e), pend = cliState.pending && cliState.pending.emp===e? cliState.pending : null;
+    h += `<div class="viz-card"><h3 class="viz-h">${e} · ${lista.length} cliente(s)</h3>`;
+    if(pend){
+      const r = clienteResumen(e, pend.name), otros = lista.filter(c=>c!==pend.name);
+      h += `<div style="background:#FFF8E6;border:1px solid #F0D58A;border-radius:8px;padding:8px 12px;font-size:12.5px;margin-bottom:8px;"><b>${escHtml(pend.name)}</b> tiene datos cargados: estimados en ${r.est.n} semana(s) (${fmtN0(r.est.t)} Bs) y reales en ${r.real.n} (${fmtN0(r.real.t)} Bs).
+        <br>¿Qué hacemos con esos montos? <select id="cliDest" style="font-size:12px;"><option value="">Elegir…</option>${otros.map(c=>`<option>${escHtml(c)}</option>`).join('')}<option value="__DEL__">— Eliminar sus datos —</option></select>
+        <button class="btn small" id="cliConfirmDel">Confirmar</button> <button class="btn secondary small" id="cliCancelDel">Cancelar</button></div>`;
+    }
+    h += `<div class="table-scroll" style="max-height:420px;"><table class="grid"><thead><tr><th>#</th><th style="text-align:left;">Cliente (se guarda en MAYÚSCULAS)</th><th>Datos</th><th></th></tr></thead><tbody>`;
+    lista.forEach((c,i)=>{
+      const r = clienteResumen(e,c), tot = r.est.n + r.real.n;
+      h += `<tr><td>${i+1}</td><td style="text-align:left;"><input class="cliName" data-e="${e}" data-i="${i}" value="${escHtml(c)}" style="width:100%;min-width:200px;font-size:12px;padding:3px;border:1px solid var(--border);border-radius:4px;"></td>
+        <td style="font-size:11.5px;color:var(--text-mute);white-space:nowrap;">${tot? (r.est.n+' est. · '+r.real.n+' real') : 'sin datos'}</td>
+        <td style="white-space:nowrap;"><button class="btn secondary small cliUp" data-e="${e}" data-i="${i}" title="Subir"${i===0?' disabled':''}>▲</button> <button class="btn secondary small cliDown" data-e="${e}" data-i="${i}" title="Bajar"${i===lista.length-1?' disabled':''}>▼</button> <button class="btn secondary small cliDel" data-e="${e}" data-i="${i}" title="Quitar de la lista">✕</button></td></tr>`;
+    });
+    h += `</tbody></table></div><div class="toolbar" style="margin-top:8px;"><input class="cliNew" data-e="${e}" placeholder="Nuevo cliente en ${e}" style="font-size:12px;padding:5px;border:1px solid var(--border);border-radius:4px;width:240px;"><button class="btn small cliAdd" data-e="${e}">+ Agregar</button></div></div>`;
+  });
+  h += `</div>`;
+  const log = (settings.clientesLog||[]).slice(-10).reverse();
+  h += `<details class="viz-card"><summary style="cursor:pointer;font-size:13px;font-weight:700;color:var(--navy);">Últimos cambios a la lista (${(settings.clientesLog||[]).length})</summary>${log.length? '<ul style="font-size:12.5px;">'+log.map(x=>`<li>${new Date(x.f).toLocaleString('es-VE')} — ${escHtml(x.a)}</li>`).join('')+'</ul>' : '<p class="hint">Sin cambios registrados desde que existe este registro.</p>'}</details>
+    <p class="hint"><b>Cómo funciona.</b> La lista alimenta las plantillas de Cuentas por Cobrar, la captura, el flujo, los indicadores y el Excel exportado. Cambiar el nombre de un cliente traslada sus datos al nombre nuevo, y las plantillas antiguas con el nombre anterior se siguen reconociendo. Quitar un cliente que tiene datos exige decidir qué pasa con ellos, para que ningún monto quede fuera del flujo. <b>Después de cambiar la lista, descargue de nuevo la plantilla de Cuentas por Cobrar</b> y pida al equipo que use la nueva: las plantillas ya descargadas tienen la lista anterior.</p>`;
+  root.innerHTML = h;
+  clientesBind();
+}
+function cliMsg(t, bad){ const el = document.getElementById('cliStatus'); if(el){ el.innerHTML = t; el.style.color = bad? '#c0392b' : 'var(--text)'; } }
+function clientesBind(){
+  const $ = s=>document.querySelectorAll(s);
+  document.getElementById('cliExport').onclick = exportarClientesExcel;
+  document.getElementById('cliImport').onchange = async ev=>{ const f = ev.target.files[0]; ev.target.value=''; if(f) await cargarClientesExcel(f); };
+  $('select[data-hu]').forEach(sel=> sel.onchange = ()=>{
+    const hu = []; EMPRESAS.forEach(e=>clientesHuerfanos(e).forEach(x=>hu.push({e, ...x}))); const x = hu[Number(sel.dataset.hu)]; if(!x || !sel.value) return;
+    const to = sel.value==='__DEL__'? '' : sel.value; moveClienteData(x.e, x.name, to);
+    if(to) setAlias(x.e, x.name, to);
+    saveEstimates(); saveActuals(); persistClientes(`${x.e}: datos de «${x.name}» ${to? 'trasladados a «'+to+'»' : 'eliminados'}`); renderClientes();
+  });
+  $('.cliName').forEach(inp=> inp.onchange = ()=>{
+    const e = inp.dataset.e, i = Number(inp.dataset.i), viejo = cliLista(e)[i], nuevo = cleanName(inp.value);
+    if(!nuevo || nuevo===viejo){ inp.value = viejo; return; }
+    if(cliLista(e).some((c,k)=>k!==i && normConcept(c)===normConcept(nuevo))){ alert('Ya existe un cliente con ese nombre en '+e+'.'); inp.value = viejo; return; }
+    const n = moveClienteData(e, viejo, nuevo); cliLista(e)[i] = nuevo; setAlias(e, viejo, nuevo);
+    saveEstimates(); saveActuals(); persistClientes(`${e}: «${viejo}» renombrado a «${nuevo}»${n? ' ('+n+' celdas de datos movidas)' : ''}`); renderClientes();
+    cliMsg(`✓ «${escHtml(viejo)}» ahora es «${escHtml(nuevo)}»${n? ' y sus datos se trasladaron.' : '.'}`);
+  });
+  const mv = (e,i,d)=>{ const l = cliLista(e), j = i+d; if(j<0||j>=l.length) return; [l[i],l[j]] = [l[j],l[i]]; persistClientes(`${e}: «${l[j]}» movido de posición`); renderClientes(); };
+  $('.cliUp').forEach(b=> b.onclick = ()=>mv(b.dataset.e, Number(b.dataset.i), -1));
+  $('.cliDown').forEach(b=> b.onclick = ()=>mv(b.dataset.e, Number(b.dataset.i), +1));
+  $('.cliAdd').forEach(b=> b.onclick = ()=>{
+    const e = b.dataset.e, inp = document.querySelector(`.cliNew[data-e="${e}"]`), nm = cleanName(inp.value);
+    if(!nm) return;
+    if(cliLista(e).some(c=>normConcept(c)===normConcept(nm))){ alert('Ya existe ese cliente en '+e+'.'); return; }
+    cliLista(e).push(nm); persistClientes(`${e}: cliente «${nm}» agregado`); renderClientes(); cliMsg(`✓ «${escHtml(nm)}» agregado a ${e}. Descargue de nuevo la plantilla de Cuentas por Cobrar.`);
+  });
+  $('.cliDel').forEach(b=> b.onclick = ()=>{
+    const e = b.dataset.e, nm = cliLista(e)[Number(b.dataset.i)], r = clienteResumen(e, nm);
+    if(r.est.n + r.real.n === 0){ CONCEPTS[e].CXC = cliLista(e).filter(c=>c!==nm); persistClientes(`${e}: cliente «${nm}» quitado (sin datos)`); renderClientes(); cliMsg(`✓ «${escHtml(nm)}» quitado de ${e}.`); }
+    else { cliState.pending = {emp:e, name:nm}; renderClientes(); }
+  });
+  const cd = document.getElementById('cliCancelDel'); if(cd) cd.onclick = ()=>{ cliState.pending = null; renderClientes(); };
+  const cc = document.getElementById('cliConfirmDel'); if(cc) cc.onclick = ()=>{
+    const p = cliState.pending, dest = document.getElementById('cliDest').value; if(!dest){ alert('Elija qué hacer con los datos de ese cliente.'); return; }
+    const to = dest==='__DEL__'? '' : dest; moveClienteData(p.emp, p.name, to); if(to) setAlias(p.emp, p.name, to);
+    CONCEPTS[p.emp].CXC = cliLista(p.emp).filter(c=>c!==p.name); cliState.pending = null;
+    saveEstimates(); saveActuals(); persistClientes(`${p.emp}: «${p.name}» quitado; sus datos ${to? 'pasaron a «'+to+'»' : 'se eliminaron'}`); renderClientes(); cliMsg(`✓ «${escHtml(p.name)}» quitado de ${p.emp}.`);
+  };
+  const ap = document.getElementById('cliPrevApply'); if(ap) ap.onclick = aplicarPreviewClientes;
+  const pc = document.getElementById('cliPrevCancel'); if(pc) pc.onclick = ()=>{ cliState.preview = null; renderClientes(); };
+  $('select[data-prev]').forEach(sel=> sel.onchange = ()=>{ cliState.preview.dest[sel.dataset.prev] = sel.value; actualizarPreviewEstado(); });
+  actualizarPreviewEstado();
+}
+
+/* ---------- Excel: exportar y cargar ---------- */
+function listaClientesAOA(){
+  const max = Math.max(...EMPRESAS.map(e=>cliLista(e).length));
+  const aoa = [[null], [null].concat(EMPRESAS.map(e=>'Clientes '+e))];
+  for(let i=0;i<max;i++) aoa.push([null].concat(EMPRESAS.map(e=> cliLista(e)[i]===undefined? null : cliLista(e)[i])));
+  return aoa;
+}
+function exportarClientesExcel(){
+  const ws = XLSX.utils.aoa_to_sheet(listaClientesAOA()); ws['!cols'] = [{wch:3}].concat(EMPRESAS.map(()=>({wch:34})));
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'CLIENTES');
+  XLSX.writeFile(wb, 'Clientes_CP-WF-TB-SV_'+isoDateStr(TODAY)+'.xlsx');
+}
+// Lee un libro con columnas "Clientes XX". Devuelve {listas:{emp:[nombres]}, avisos:[...]}
+function leerListaClientes(wb){
+  const avisos = [], listas = {};
+  const nm = wb.SheetNames.find(n=>/clientes/i.test(n)) || wb.SheetNames[0];
+  const aoa = XLSX.utils.sheet_to_json(wb.Sheets[nm], {header:1, defval:null, raw:true});
+  let hdr = -1, cols = {};
+  for(let r=0;r<Math.min(aoa.length,15) && hdr<0;r++){
+    const c = {}; (aoa[r]||[]).forEach((v,j)=>{ const m = /^\s*clientes?\s+(CP|WF|TB|SV)\b/i.exec(String(v||'')); if(m) c[m[1].toUpperCase()] = j; });
+    if(Object.keys(c).length){ hdr = r; cols = c; }
+  }
+  if(hdr<0) return {listas, avisos:['No se encontraron columnas con encabezado "Clientes CP", "Clientes WF", "Clientes TB" o "Clientes SV".']};
+  Object.keys(cols).forEach(e=>{
+    const vistos = new Set(), out = [];
+    for(let r=hdr+1;r<aoa.length;r++){
+      const raw = (aoa[r]||[])[cols[e]]; if(raw===null||raw===undefined||String(raw).trim()==='') continue;
+      const n = cleanName(raw);
+      if(vistos.has(normConcept(n))){ avisos.push(`${e}: «${n}» está repetido en el Excel (se usó una sola vez).`); continue; }
+      vistos.add(normConcept(n)); out.push(n);
+    }
+    listas[e] = out;
+  });
+  EMPRESAS.filter(e=>!(e in cols)).forEach(e=>avisos.push(`${e}: no venía en el Excel; su lista no cambia.`));
+  return {listas, avisos};
+}
+function sugerirDestino(nombre, nuevos){
+  const n = normConcept(nombre);
+  const a = nuevos.find(x=>{ const y = normConcept(x); return y.startsWith(n) || n.startsWith(y); });
+  if(a) return a;
+  return nuevos.find(x=>/^OTROS CLIENTES$/.test(normConcept(x))) || '';
+}
+async function cargarClientesExcel(file){
+  try{
+    const wb = XLSX.read(new Uint8Array(await file.arrayBuffer()), {type:'array'});
+    const {listas, avisos} = leerListaClientes(wb);
+    if(!Object.keys(listas).length){ cliMsg(avisos.join(' '), true); return; }
+    prepararPreviewClientes(listas, avisos, file.name);
+    renderClientes();
+  }catch(e){ console.error(e); cliMsg('No se pudo leer ese Excel: '+escHtml(e.message||String(e)), true); }
+}
+function prepararPreviewClientes(listas, avisos, archivo){
+  const pv = {archivo, avisos, listas, diff:{}, dest:{}};
+  Object.keys(listas).forEach(e=>{
+    const nuevos = listas[e], actual = cliLista(e), setN = new Set(nuevos.map(normConcept)), setA = new Set(actual.map(normConcept));
+    const quitados = actual.filter(c=>!setN.has(normConcept(c))), agregados = nuevos.filter(c=>!setA.has(normConcept(c)));
+    const conDatos = quitados.map(c=>({name:c, r:clienteResumen(e,c)})).filter(x=>x.r.est.n+x.r.real.n>0);
+    pv.diff[e] = {nuevos, agregados, quitados, conDatos, mantenidos: nuevos.length-agregados.length};
+    conDatos.forEach(x=> pv.dest[e+'|'+x.name] = sugerirDestino(x.name, nuevos));
+  });
+  cliState.preview = pv;
+}
+function renderClientesPreview(){
+  const pv = cliState.preview; let h = `<div class="viz-card" style="border-color:#2a78d6;"><h3 class="viz-h">Vista previa de la lista cargada: ${escHtml(pv.archivo)}</h3><p class="hint">Nada se aplica hasta que confirme. Las empresas que no vienen en el Excel no cambian.</p>`;
+  if(pv.avisos.length) h += `<p style="font-size:12.5px;color:#b36b00;">⚠ ${pv.avisos.map(escHtml).join('<br>⚠ ')}</p>`;
+  h += `<table class="grid"><thead><tr><th>Empresa</th><th>Antes</th><th>Después</th><th style="text-align:left;">Se agregan</th><th style="text-align:left;">Se quitan</th></tr></thead><tbody>`;
+  Object.keys(pv.diff).forEach(e=>{ const d = pv.diff[e];
+    h += `<tr><td>${e}</td><td>${cliLista(e).length}</td><td>${d.nuevos.length}</td><td style="text-align:left;font-size:12px;">${d.agregados.length? d.agregados.map(escHtml).join(', ') : '—'}</td><td style="text-align:left;font-size:12px;">${d.quitados.length? d.quitados.map(escHtml).join(', ') : '—'}</td></tr>`; });
+  h += `</tbody></table>`;
+  const filas = []; Object.keys(pv.diff).forEach(e=>pv.diff[e].conDatos.forEach(x=>filas.push({e, ...x})));
+  if(filas.length){
+    h += `<p style="font-size:12.5px;margin:10px 0 4px;"><b>Estos clientes salen de la lista pero tienen datos.</b> Elija a dónde van sus montos (si es el mismo cliente con otro nombre, elija el nombre nuevo):</p><table class="grid"><tbody>`;
+    filas.forEach(x=>{ const key = x.e+'|'+x.name, opts = pv.diff[x.e].nuevos;
+      h += `<tr><td>${x.e}</td><td style="text-align:left;">${escHtml(x.name)}</td><td style="font-size:12px;">${x.r.est.n} est. (${fmtN0(x.r.est.t)} Bs) · ${x.r.real.n} reales (${fmtN0(x.r.real.t)} Bs)</td>
+        <td><select data-prev="${escHtml(key)}" style="font-size:12px;"><option value="">Elegir…</option>${opts.map(c=>`<option${pv.dest[key]===c?' selected':''}>${escHtml(c)}</option>`).join('')}<option value="__DEL__"${pv.dest[key]==='__DEL__'?' selected':''}>— Eliminar sus datos —</option></select></td></tr>`; });
+    h += `</tbody></table>`;
+  }
+  h += `<div class="toolbar" style="margin-top:10px;"><button class="btn accent small" id="cliPrevApply">Aplicar lista</button><button class="btn secondary small" id="cliPrevCancel">Cancelar</button><span id="cliPrevEstado" style="font-size:12.5px;"></span></div></div>`;
+  return h;
+}
+function previewCompleto(){
+  const pv = cliState.preview; if(!pv) return true;
+  return Object.keys(pv.dest).every(k=>pv.dest[k]);
+}
+function actualizarPreviewEstado(){
+  const b = document.getElementById('cliPrevApply'), s = document.getElementById('cliPrevEstado'); if(!b) return;
+  const ok = previewCompleto(); b.disabled = !ok; if(s) s.textContent = ok? '' : 'Falta elegir el destino de los datos de algún cliente.';
+}
+function aplicarPreviewClientes(){
+  const pv = cliState.preview; if(!pv || !previewCompleto()) return;
+  let movidas = 0; const resumen = [];
+  Object.keys(pv.diff).forEach(e=>{
+    const d = pv.diff[e];
+    d.conDatos.forEach(x=>{ const dest = pv.dest[e+'|'+x.name], to = dest==='__DEL__'? '' : dest; movidas += moveClienteData(e, x.name, to); if(to) setAlias(e, x.name, to); });
+    CONCEPTS[e].CXC = pv.listas[e].slice();
+    resumen.push(`${e}: ${d.nuevos.length} clientes (+${d.agregados.length} / −${d.quitados.length})`);
+  });
+  cliState.preview = null;
+  saveEstimates(); saveActuals(); persistClientes('Lista cargada desde «'+pv.archivo+'» — '+resumen.join('; ')+(movidas? ' · '+movidas+' celdas de datos trasladadas' : ''));
+  renderClientes(); cliMsg('✓ Lista aplicada: '+resumen.join(' · ')+'. Descargue de nuevo la plantilla de Cuentas por Cobrar y compártala con el equipo.');
+}
+
 /* ================= INIT ================= */
 async function init(){
   document.getElementById('todayLabel').textContent = fmtDateLong(TODAY);
@@ -2924,6 +3393,7 @@ async function init(){
     document.getElementById('driveStatus').textContent = 'Client ID recordado. Presione "Conectar con Google Drive".';
   }
   // Mientras no haya conexión con Drive, se muestran las tablas vacías (sin datos guardados localmente).
+  renderSyncBar();
   renderDeptTabs();
   renderCompanyTabsCaptura();
   renderCapturaTable();
