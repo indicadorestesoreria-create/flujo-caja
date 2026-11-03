@@ -221,8 +221,8 @@
         </label>
         <button class="btn accent small" id="btnImportarTodoDrive">☁ Importar todo desde Drive</button>
         <button class="btn secondary small" id="btnBuscarEnDrive">📁 Elegir un archivo de Drive</button>
-        <button class="btn secondary small" id="btnTplDept">⬇ Plantilla de este departamento</button>
-        <button class="btn secondary small" id="btnTplAll">⬇ Las 5 plantillas</button>
+        <button class="btn secondary small" id="btnTplDept">⬇ Plantilla de esta pestaña</button>
+        <button class="btn secondary small" id="btnTplAll">⬇ Las 6 plantillas</button>
         <button class="btn secondary small btnUndoImport" disabled>↶ Deshacer última importación</button>
         <span id="importStatus" style="font-size:12px;color:var(--text-mute);"></span>
       </div>
@@ -235,6 +235,7 @@
         <span id="capSummary" style="font-size:12px;color:var(--text-mute);"></span>
       </div>
       <div class="table-scroll"><table class="grid" id="capturaTable"></table></div>
+      <div id="saldosCaptura" style="display:none;"></div>
     </div>
   </section>
 
@@ -400,7 +401,7 @@
 
 </main>
 
-<footer class="app">Flujo de Caja Semanal · CP · WF · TB · SV — datos guardados en Google Drive · versión 2026-11-03 · v5 · compártalo solo con el equipo autorizado</footer>
+<footer class="app">Flujo de Caja Semanal · CP · WF · TB · SV — datos guardados en Google Drive · versión 2026-11-03 · v6 · compártalo solo con el equipo autorizado</footer>
 
 <!-- Modal: cerrar semana / cargar real -->
 <div class="modal-bg" id="modalBg">
@@ -1077,10 +1078,13 @@ function renderDeptTabs(){
   DEPTS.forEach(d=>{
     const b=document.createElement('button');
     b.textContent=d.label;
-    if(d.key===currentDept) b.classList.add('active');
-    b.onclick=()=>{ currentDept=d.key; renderDeptTabs(); renderCapturaTable(); document.getElementById('importStatus').textContent=''; };
+    if(d.key===currentDept && !capSaldos) b.classList.add('active');
+    b.onclick=()=>{ capSaldos=false; currentDept=d.key; renderDeptTabs(); renderCapturaTable(); document.getElementById('importStatus').textContent=''; };
     el.appendChild(b);
   });
+  const bs=document.createElement('button'); bs.textContent='Saldos bancarios'; if(capSaldos) bs.classList.add('active');
+  bs.onclick=()=>{ capSaldos=true; renderDeptTabs(); renderCapturaTable(); document.getElementById('importStatus').textContent=''; };
+  el.appendChild(bs);
 }
 function renderCompanyTabsCaptura(){
   const el = document.getElementById('companyTabsCaptura');
@@ -1195,6 +1199,7 @@ function renderBancos(){
 }
 
 function renderCapturaTable(){
+  setSaldosMode(capSaldos); if(capSaldos){ renderSaldosCaptura(); renderEstadoCarga(); return; }
   const weeks = generateWeeks(weeksCountCaptura, weeksPastCaptura);
   const conceptos = CONCEPTS[currentCompanyCap][currentDept] || [];
   const table = document.getElementById('capturaTable');
@@ -1290,6 +1295,7 @@ function peekWorkbook(bytes){
   for(const name of wb.SheetNames){
     const sh = wb.Sheets[name]; if(!sh) continue;
     const a1 = String((sh['A1']||{}).v||'');
+    if(a1.trim()==='FC_SALDOS') return {wb, tipo:'SALDOS', dept:'SALDOS', semana:null};
     let m = a1.match(/^FC_REAL:([A-Z]+)\|(\d{4}-W\d{2})/);
     if(m && DEPT_SIGN[m[1]]!==undefined) return {wb, tipo:'REAL', dept:m[1], semana:m[2]};
     m = a1.match(/^FC_DEPT:([A-Z]+)/);
@@ -1408,6 +1414,11 @@ async function importAnyWorkbookBytes(bytes, fileName){
   const res = {fileName, ok:false, notes:[], summary:''};
   let pk;
   try{ pk = peekWorkbook(bytes); }catch(e){ res.summary = 'No se pudo leer el archivo (¿es un .xlsx válido?).'; return res; }
+  if(pk.tipo==='SALDOS'){
+    const rs = applySaldosWorkbook(pk.wb); res.ok = rs.ok; res.summary = rs.summary; res.notes = rs.notes||[]; res.dept='SALDOS'; res.kind='SALDOS';
+    if(rs.ok) importLog['SALDOS'] = {fecha:new Date().toISOString(), archivo:fileName||'', tipo:'SALDOS', semana:null, celdas:rs.cells||0};
+    return res;
+  }
   let dept = pk.dept;
   if(!dept){ dept = currentDept; res.notes.push(`No se pudo identificar el departamento por el título del archivo; se usó el seleccionado (<b>${escHtml(DEPT_LABEL[currentDept])}</b>). Verifique que sea el correcto.`); }
   res.dept = dept; res.kind = pk.tipo;
@@ -1422,7 +1433,7 @@ async function importAnyWorkbookBytes(bytes, fileName){
 }
 let lastImportBackup = null;
 function beginImportBatch(){
-  lastImportBackup = JSON.stringify({estimates, actuals, closedMap, importLog});
+  lastImportBackup = JSON.stringify({estimates, actuals, closedMap, importLog, bankHistory});
   document.querySelectorAll('.btnUndoImport').forEach(b=>b.disabled=false);
 }
 function showImportResults(results, statusEl, reportEl){
@@ -1436,7 +1447,7 @@ function showImportResults(results, statusEl, reportEl){
   }).join('');
 }
 function refreshAfterImport(){
-  renderCapturaTable();
+  renderCapturaTable(); if(typeof renderBancos==='function') renderBancos();
   if(typeof renderCierre==='function' && document.getElementById('view-cierre').classList.contains('active')) renderCierre();
 }
 async function importFiles(items, statusEl, reportEl){
@@ -1458,7 +1469,7 @@ async function importLocalFiles(fileList, statusEl, reportEl){
 function undoLastImport(){
   if(!lastImportBackup) return;
   const b = JSON.parse(lastImportBackup);
-  estimates = b.estimates; actuals = b.actuals; closedMap = b.closedMap; importLog = b.importLog||{};
+  estimates = b.estimates; actuals = b.actuals; closedMap = b.closedMap; importLog = b.importLog||{}; if(b.bankHistory) bankHistory = b.bankHistory;
   lastImportBackup = null;
   document.querySelectorAll('.btnUndoImport').forEach(x=>x.disabled=true);
   scheduleSaveToDrive();
@@ -1541,6 +1552,12 @@ function renderEstadoCarga(){
     });
     h += '</tr>';
   });
+  { const lg = importLog['SALDOS'];
+    const cuando = lg? `${new Date(lg.fecha).toLocaleString('es-VE')} · ${escHtml(lg.archivo||'')}` : '<span style="color:var(--danger);font-weight:700;">▲ nunca importada</span>';
+    h += `<tr><td class="concept">Saldos bancarios</td><td style="text-align:left;white-space:normal;">${cuando}</td>`;
+    EMPRESAS.forEach(e=>{ const fr = saldoFrescura(e);
+      h += !fr? `<td style="color:var(--danger);font-weight:700;">▲ sin saldos</td>` : (fr.dias>7? `<td style="color:var(--danger);font-weight:700;">▲ hace ${fr.dias} d</td>` : `<td style="color:var(--accent);font-weight:700;">✓ ${fmtFechaIso(fr.fecha)}</td>`); });
+    h += '</tr>'; }
   el.innerHTML = h + '</tbody></table></div>';
 }
 
@@ -1663,8 +1680,10 @@ async function downloadTemplate(deptKey){
 async function downloadRealTemplate(deptKey, weekKey){
   downloadBuffer(await buildRealTemplateBuffer(deptKey, weekKey), `Reales_${TEMPLATE_FILE_NAME[deptKey]}_${weekKey}.xlsx`);
 }
+async function downloadSaldosTemplate(){ downloadBuffer(await buildSaldosTemplateBuffer(), `Plantilla_Saldos_${CURRENT_WEEK_KEY}.xlsx`); }
 document.getElementById('btnTplDept').addEventListener('click', async ()=>{
   const st = document.getElementById('importStatus'); st.textContent = 'Generando plantilla...';
+  if(capSaldos){ try{ await downloadSaldosTemplate(); st.textContent = 'Plantilla de saldos bancarios descargada.'; }catch(e){ console.error(e); st.textContent = 'No se pudo generar la plantilla: '+e.message; } return; }
   try{ await downloadTemplate(currentDept); st.textContent = `Plantilla de ${DEPT_LABEL[currentDept]} descargada.`; }
   catch(e){ console.error(e); st.textContent = 'No se pudo generar la plantilla: '+e.message; }
 });
@@ -1672,7 +1691,8 @@ document.getElementById('btnTplAll').addEventListener('click', async ()=>{
   const st = document.getElementById('importStatus');
   try{
     for(const d of DEPTS){ st.textContent = `Generando ${d.label}...`; await downloadTemplate(d.key); await new Promise(r=>setTimeout(r,600)); }
-    st.textContent = 'Las 5 plantillas fueron descargadas. Si el navegador pidió permiso para múltiples descargas, acéptelo.';
+    st.textContent = 'Generando Saldos...'; await downloadSaldosTemplate();
+    st.textContent = 'Las 6 plantillas fueron descargadas. Si el navegador pidió permiso para múltiples descargas, acéptelo.';
   }catch(e){ console.error(e); st.textContent = 'No se pudieron generar las plantillas: '+e.message; }
 });
 
@@ -3121,6 +3141,152 @@ function renderComparar(){
     const v = e.target.value; if(v===''||Number(v)<=0){ delete settings.inpc[e.target.dataset.ym]; } else settings.inpc[e.target.dataset.ym] = Number(v);
     scheduleSaveToDrive(); renderComparar();
   }));
+}
+/* ================= SALDOS BANCARIOS: plantilla, importación y vista ================= */
+let capSaldos = false;
+// Plantilla "FC_SALDOS": una pestaña por empresa con una fila por banco (Banco | Fecha | Saldo Bs) y filas extra para otras fechas.
+// El saldo en blanco NO se toma como 0: ese banco conserva su último saldo cargado (y se avisa).
+const SALDOS_FILAS_EXTRA = 24;
+function ymdValido(y,m,d){ const t = new Date(Date.UTC(y,m-1,d)); return t.getUTCFullYear()===y && t.getUTCMonth()===m-1 && t.getUTCDate()===d; }
+function ymdStr(y,m,d){ return y+'-'+String(m).padStart(2,'0')+'-'+String(d).padStart(2,'0'); }
+function parseFechaCelda(v){
+  if(v===null || v===undefined || String(v).trim()==='') return null;
+  if(v instanceof Date && !isNaN(v)) return v.toISOString().slice(0,10);
+  if(typeof v==='number'){ if(!(v>20000 && v<80000)) return null; return new Date(Math.round((v-25569)*86400000)).toISOString().slice(0,10); }
+  const s = String(v).trim(); let m;
+  if((m = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(s))){ const y=+m[1], mo=+m[2], d=+m[3]; return ymdValido(y,mo,d)? ymdStr(y,mo,d) : null; }
+  if((m = /^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/.exec(s))){ let y=+m[3]; if(y<100) y+=2000; const d=+m[1], mo=+m[2]; return ymdValido(y,mo,d)? ymdStr(y,mo,d) : null; }   // día/mes/año
+  return null;
+}
+function parseMontoCelda(v){
+  if(typeof v==='number') return isFinite(v)? v : NaN;
+  let s = String(v===null||v===undefined? '' : v).trim().replace(/\s|Bs\.?|VES/gi,'');
+  if(!s) return NaN;
+  const neg = /^\(.*\)$/.test(s) || s.startsWith('-'); s = s.replace(/[()\-]/g,'');
+  const lc = s.lastIndexOf(','), lp = s.lastIndexOf('.');
+  if(lc>=0 && lp>=0) s = lc>lp? s.replace(/\./g,'').replace(',','.') : s.replace(/,/g,'');   // el último separador es el decimal
+  else if(lc>=0) s = /,\d{1,2}$/.test(s)? s.replace(',','.') : s.replace(/,/g,'');
+  else if((s.match(/\./g)||[]).length>1) s = s.replace(/\./g,'');
+  const n = Number(s); return isFinite(n)? (neg? -n : n) : NaN;
+}
+function matchBanco(txt){
+  const n = normConcept(txt).normalize('NFD').replace(/[̀-ͯ]/g,'');
+  return BANK_LIST.find(b=> normConcept(b).normalize('NFD').replace(/[̀-ͯ]/g,'')===n) || null;
+}
+function nomEmp(e){ const n = (typeof EMPRESA_NOMBRE!=='undefined' && EMPRESA_NOMBRE[e]) || ''; return n && n!==e? `${e} · ${n}` : e; }
+function diasEntre(isoA, isoB){ return Math.round((Date.UTC(+isoB.slice(0,4), +isoB.slice(5,7)-1, +isoB.slice(8,10)) - Date.UTC(+isoA.slice(0,4), +isoA.slice(5,7)-1, +isoA.slice(8,10)))/86400000); }
+function fmtFechaIso(iso){ return iso? fmtDateShort(new Date(iso+'T00:00:00Z')) : '—'; }
+function saldoFrescura(emp){   // fecha del último saldo cargado de la empresa (la más reciente entre sus bancos) y su antigüedad
+  let best = null; BANK_LIST.forEach(b=>{ const f = getLatestBankBalance(emp,b).fecha; if(f && (!best || f>best)) best = f; });
+  return best? {fecha:best, dias:diasEntre(best, isoDateStr(TODAY))} : null;
+}
+
+function applySaldosWorkbook(wb){
+  const notes = [], resumen = [], hoy = isoDateStr(TODAY); let cargados = 0, hojas = 0, reemplazos = 0;
+  const vacio = v=> v===null || v===undefined || String(v).trim()==='';
+  for(const emp of EMPRESAS){
+    if(!wb.SheetNames.includes(emp)) continue;
+    const aoa = XLSX.utils.sheet_to_json(wb.Sheets[emp], {header:1, defval:null, raw:true});
+    const hdr = aoa.findIndex(r=> r && String(r[0]||'').trim().toLowerCase()==='clave_saldos');
+    if(hdr===-1){ notes.push(`<b>${emp}</b>: no se encontró la fila técnica "clave_saldos"; pestaña omitida (¿es la plantilla de saldos?).`); continue; }
+    hojas++;
+    const nuevos = {}, sinSaldo = [], malas = [];
+    for(let r=hdr+2; r<aoa.length; r++){
+      const row = aoa[r]||[], bRaw=row[0], fRaw=row[1], sRaw=row[2];
+      if(vacio(bRaw) && vacio(sRaw)) continue;
+      const banco = vacio(bRaw)? null : matchBanco(bRaw);
+      if(vacio(bRaw)){ malas.push(`fila ${r+1}: tiene saldo pero no banco`); continue; }
+      if(!banco){ malas.push(`fila ${r+1}: banco no reconocido «${String(bRaw).trim()}»`); continue; }
+      if(vacio(sRaw)){ sinSaldo.push(banco); continue; }
+      const saldo = parseMontoCelda(sRaw); if(isNaN(saldo)){ malas.push(`${banco}: saldo no numérico «${String(sRaw).trim()}»`); continue; }
+      const fecha = parseFechaCelda(fRaw); if(!fecha){ malas.push(`${banco}: fecha vacía o inválida`); continue; }
+      if(fecha>hoy){ malas.push(`${banco}: fecha futura (${fmtFechaIso(fecha)})`); continue; }
+      const k = banco+'|'+fecha; if(nuevos[k]!==undefined) malas.push(`${banco} ${fmtFechaIso(fecha)}: repetido en la hoja (se usó el último)`);
+      nuevos[k] = {banco, fecha, saldo};
+    }
+    const lista = Object.values(nuevos);
+    // sospechas: salto grande respecto al último saldo conocido (antes de aplicar)
+    lista.forEach(x=>{ const last = getLatestBankBalance(emp, x.banco);
+      if(last.fecha && last.fecha!==x.fecha && last.saldo && Math.abs(x.saldo-last.saldo)/Math.abs(last.saldo) > 0.5)
+        notes.push(`<b>${emp} · ${x.banco}</b>: saldo ${fmtBs(x.saldo)} Bs vs el último cargado ${fmtBs(last.saldo)} Bs (${fmtFechaIso(last.fecha)}): variación de ${Math.round((x.saldo-last.saldo)/Math.abs(last.saldo)*100)}%. Verifique que no falten o sobren ceros.`); });
+    lista.forEach(x=>{
+      bankHistory[emp] = bankHistory[emp]||{}; bankHistory[emp][x.banco] = bankHistory[emp][x.banco]||{};
+      const prev = bankHistory[emp][x.banco][x.fecha]; if(prev!==undefined && Number(prev)!==x.saldo) reemplazos++;
+      bankHistory[emp][x.banco][x.fecha] = x.saldo;
+    });
+    cargados += lista.length;
+    if(malas.length) notes.push(`<b>${emp}</b>: filas ignoradas: ${malas.map(escHtml).join('; ')}.`);
+    if(sinSaldo.length && !lista.length) notes.push(`<b>${emp}</b>: pestaña sin ningún saldo escrito (no se cargó nada).`);
+    else if(sinSaldo.length) notes.push(`<b>${emp}</b>: sin saldo (no se cargaron; conservan el anterior): ${[...new Set(sinSaldo)].join(', ')}.`);
+    // bancos que quedan con un saldo más viejo que lo recién cargado
+    if(lista.length){ const maxF = lista.reduce((m,x)=>x.fecha>m? x.fecha : m, ''); const viejos = [];
+      BANK_LIST.forEach(b=>{ const l = getLatestBankBalance(emp,b); if(l.fecha && diasEntre(l.fecha, maxF)>7 && l.saldo) viejos.push(`${b} (${fmtFechaIso(l.fecha)})`); });
+      if(viejos.length) notes.push(`<b>${emp}</b>: estos bancos siguen con un saldo más antiguo que el cargado: ${viejos.join(', ')}.`); }
+    resumen.push(`${emp} ${lista.length} · saldo inicial ${fmtBs(getOpeningBalance(emp))} Bs`);
+  }
+  if(!hojas) return {ok:false, notes, summary:'No se encontraron pestañas CP / WF / TB / SV con la plantilla de saldos.'};
+  if(!cargados) return {ok:false, notes, summary:'No se cargó ningún saldo (todas las filas estaban en blanco o tenían errores).'};
+  const total = EMPRESAS.reduce((a,e)=>a+getOpeningBalance(e),0);
+  notes.unshift(`Saldo inicial del grupo con estos datos: <b>${fmtBs(total)} Bs</b>.` + (reemplazos? ` ${reemplazos} saldo(s) reemplazaron un valor distinto de la misma fecha.` : ''));
+  return {ok:true, notes, cells:cargados, summary:`Saldos bancarios: ${cargados} saldo(s) cargado(s) — ${resumen.join(' · ')}.`};
+}
+
+async function buildSaldosTemplateBuffer(){
+  await loadScriptOnce(EXCELJS_URL);
+  const wb = new ExcelJS.Workbook(), NAVY='FF1F3A5C', GREYTXT='FF6B7280', BLUEIN='FF1F4FD8', INFILL='FFFFF9E5';
+  const [ty,tm,td] = isoDateStr(TODAY).split('-').map(Number), hoyDate = new Date(Date.UTC(ty,tm-1,td));
+  const thin = {style:'thin', color:{argb:'FFD0D5DD'}}, box = {top:thin,left:thin,bottom:thin,right:thin};
+  EMPRESAS.forEach(emp=>{
+    const ws = wb.addWorksheet(emp, {properties:{tabColor:{argb:NAVY}}});
+    ws.getCell('A1').value = 'FC_SALDOS'; ws.getCell('B1').value = `Generada el ${isoDateStr(TODAY)} · semana ${CURRENT_WEEK_KEY}`;
+    ws.getCell('A1').font = ws.getCell('B1').font = {size:8, color:{argb:GREYTXT}};
+    ws.getCell('A2').value = `PLANTILLA DE SALDOS BANCARIOS — EMPRESA ${nomEmp(emp)}`; ws.getCell('A2').font = {bold:true, size:13, color:{argb:NAVY}};
+    ws.getCell('A3').value = 'Escriba el saldo de cada banco al cierre del día indicado en "Fecha", en Bs, solo números (negativo si hay sobregiro). Banco sin saldo escrito = no se carga (conserva el anterior; NO se toma como 0). Para otras fechas use las filas de abajo y elija el banco en la lista. No cambie los nombres ni la fila oculta 4.';
+    ws.getCell('A3').font = {italic:true, size:9, color:{argb:GREYTXT}}; ws.getCell('A3').alignment = {wrapText:true, vertical:'top'}; ws.mergeCells('A3:E3'); ws.getRow(3).height = 40;
+    ws.getRow(4).getCell(1).value = 'clave_saldos'; ws.getRow(4).hidden = true;
+    ['Banco','Fecha del saldo (dd/mm/aaaa)','Saldo (Bs)','Último saldo cargado (referencia)','Fecha del último (referencia)'].forEach((t,i)=>{
+      const c = ws.getRow(5).getCell(i+1); c.value = t; c.font = {bold:true, color:{argb:'FFFFFFFF'}}; c.fill = {type:'pattern', pattern:'solid', fgColor:{argb: i<3? NAVY : 'FF6B7280'}}; c.alignment = {wrapText:true, horizontal:'center', vertical:'middle'}; });
+    ws.getRow(5).height = 36; [28,20,24,26,22].forEach((w,i)=>ws.getColumn(i+1).width = w);
+    const input = (c, fmt)=>{ c.fill = {type:'pattern', pattern:'solid', fgColor:{argb:INFILL}}; c.border = box; c.font = {color:{argb:BLUEIN}}; if(fmt) c.numFmt = fmt; };
+    BANK_LIST.forEach((b,i)=>{
+      const r = ws.getRow(6+i), last = getLatestBankBalance(emp,b);
+      r.getCell(1).value = b; r.getCell(1).font = {bold:true}; r.getCell(1).border = box;
+      r.getCell(2).value = hoyDate; input(r.getCell(2), 'dd/mm/yyyy'); input(r.getCell(3), '#,##0.00');
+      r.getCell(3).dataValidation = {type:'decimal', operator:'between', formulae:[-1e15,1e15], allowBlank:true, showErrorMessage:true, errorTitle:'Saldo', error:'Escriba solo números.'};
+      if(last.fecha){ r.getCell(4).value = last.saldo; r.getCell(5).value = new Date(last.fecha+'T00:00:00Z'); }
+      r.getCell(4).numFmt = '#,##0.00'; r.getCell(5).numFmt = 'dd/mm/yyyy'; [4,5].forEach(k=>{ r.getCell(k).font = {italic:true, color:{argb:GREYTXT}}; r.getCell(k).border = box; });
+    });
+    for(let k=0;k<SALDOS_FILAS_EXTRA;k++){
+      const r = ws.getRow(6+BANK_LIST.length+k);
+      input(r.getCell(1)); r.getCell(1).dataValidation = {type:'list', allowBlank:true, formulae:['"'+BANK_LIST.join(',')+'"']};
+      input(r.getCell(2),'dd/mm/yyyy'); input(r.getCell(3),'#,##0.00');
+      r.getCell(3).dataValidation = {type:'decimal', operator:'between', formulae:[-1e15,1e15], allowBlank:true, showErrorMessage:true, errorTitle:'Saldo', error:'Escriba solo números.'};
+    }
+    ws.views = [{state:'frozen', xSplit:1, ySplit:5, showGridLines:false}];
+  });
+  return await wb.xlsx.writeBuffer();
+}
+
+/* ---------- Vista dentro de "Captura por Área" ---------- */
+function setSaldosMode(on){
+  const hide = [document.getElementById('companyTabsCaptura'), document.getElementById('btnMorePastCap').parentElement, document.getElementById('capturaTable').parentElement];
+  hide.forEach(x=>{ if(x) x.style.display = on? 'none' : ''; });
+  const el = document.getElementById('saldosCaptura'); if(el) el.style.display = on? '' : 'none';
+}
+function renderSaldosCaptura(){
+  const el = document.getElementById('saldosCaptura'); if(!el) return;
+  let h = `<p class="hint"><b>Proceso:</b> 1) descargue la <b>plantilla de saldos</b> (botón de arriba); 2) Tesorería escribe el saldo de cada banco al cierre del día, por empresa, y la deja en "Capturas por área"; 3) pulse <b>Importar todo desde Drive</b> (o importe el archivo). Cada saldo queda en el historial con su fecha; el saldo inicial de la proyección usa el más reciente de cada banco. Un banco sin saldo escrito conserva el anterior (no se toma como 0). También puede cargarlos uno a uno en <i>Disponibilidad Inicial</i>.</p><div class="grid2">`;
+  EMPRESAS.forEach(e=>{
+    const fr = saldoFrescura(e);
+    const chip = !fr? '<span style="color:var(--danger);font-weight:700;">▲ sin saldos</span>' : (fr.dias>7? `<span style="color:var(--danger);font-weight:700;">▲ último saldo hace ${fr.dias} días</span>` : `<span style="color:var(--accent);font-weight:700;">✓ al día (${fmtFechaIso(fr.fecha)})</span>`);
+    h += `<div class="viz-card"><h3 class="viz-h">${nomEmp(e)} &nbsp; ${chip}</h3><table class="grid"><thead><tr><th style="text-align:left;">Banco</th><th>Último saldo (Bs)</th><th>Fecha</th><th>Antigüedad</th><th>Registros</th></tr></thead><tbody>`;
+    BANK_LIST.forEach(b=>{
+      const l = getLatestBankBalance(e,b), n = Object.keys(((bankHistory[e]||{})[b])||{}).length, d = l.fecha? diasEntre(l.fecha, isoDateStr(TODAY)) : null;
+      h += `<tr><td style="text-align:left;">${b}</td><td style="text-align:right;">${l.fecha? fmtBs(l.saldo) : '—'}</td><td>${fmtFechaIso(l.fecha)}</td><td style="${d!==null && d>7? 'color:var(--danger);font-weight:700;' : ''}">${d===null? '—' : d+' d'}</td><td>${n}</td></tr>`;
+    });
+    h += `<tr style="font-weight:700;"><td style="text-align:left;">Saldo inicial (suma)</td><td style="text-align:right;">${fmtBs(getOpeningBalance(e))}</td><td colspan="3"></td></tr></tbody></table></div>`;
+  });
+  el.innerHTML = h + '</div>';
 }
 /* ================= CLIENTES: administración de la lista de Cuentas por Cobrar ================= */
 // La lista vive en settings.clientes (se guarda en Drive con el resto). Si no existe, se usa la lista de fábrica de CONCEPTS.
