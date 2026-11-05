@@ -327,6 +327,7 @@
         <button class="btn small btnExportFlujo">⬇ Exportar flujo a Excel</button>
       </div>
       <div id="indAlertas"></div>
+      <div id="indSemaforo"></div>
       <div class="kpi-row" id="indKpis"></div>
       <div class="viz-card"><h3 class="viz-h" id="indChart1Title"></h3><div id="indChart1"></div></div>
       <div class="viz-card"><h3 class="viz-h" id="indChart2Title"></h3>
@@ -409,7 +410,7 @@
 
 </main>
 
-<footer class="app">Flujo de Caja Semanal · CP · WF · TB · SV — datos guardados en Google Drive · versión 2026-11-05 · v9 · compártalo solo con el equipo autorizado</footer>
+<footer class="app">Flujo de Caja Semanal · CP · WF · TB · SV — datos guardados en Google Drive · versión 2026-11-05 · v10 · compártalo solo con el equipo autorizado</footer>
 
 <!-- Modal: cerrar semana / cargar real -->
 <div class="modal-bg" id="modalBg">
@@ -2592,7 +2593,7 @@ function barList(items, total, fmtVal){
   if(!items.length || !total) return '<div class="empty-state" style="padding:12px;">Sin datos en el horizonte.</div>';
   return items.map(it=>`<div class="bar-row"><div class="bar-lbl" title="${escHtml(it.name)}">${escHtml(it.name)}</div><div class="bar-track"><div class="bar-fill" style="width:${Math.max(1,it.v/total*100).toFixed(1)}%"></div></div><div class="bar-val">${fmtVal(it.v)} <span style="color:var(--text-mute)">(${(it.v/total*100).toFixed(0)}%)</span></div></div>`).join('');
 }
-function renderIndicadores(){
+function renderIndicadoresBase(){
   const hSel = document.getElementById('indHoriz');
   if(!renderIndicadores._init){ hSel.value = String(settings.horizonte||13); renderIndicadores._init = true; }
   const H = Number(hSel.value) || 13;
@@ -3553,6 +3554,122 @@ function aplicarPreviewClientes(){
   renderClientes(); cliMsg('✓ Lista aplicada: '+resumen.join(' · ')+'. Descargue de nuevo la plantilla de Cuentas por Cobrar y compártala con el equipo.');
 }
 
+/* ================= TABLERO DE SEMÁFOROS (indicadores de gestión del flujo de caja) ================= */
+// dir 'hi': más alto es mejor (verde si ≥ v[0], amarillo si ≥ v[1], rojo si menos). dir 'lo': más bajo es mejor (verde si ≤ v[0], amarillo si ≤ v[1], rojo si más).
+// Umbrales SUGERIDOS: punto de partida para calibrar con 8–12 semanas de historia; se editan en la pantalla y se guardan en Drive.
+const UMBRAL_DEF = {
+  cobertura:{dir:'hi', v:[4,2],     u:'semanas', n:'Cobertura de caja'},
+  razon:    {dir:'hi', v:[1.1,1.0], u:'×',       n:'Razón cobros / pagos'},
+  cumpl:    {dir:'hi', v:[90,75],   u:'%',       n:'Cumplimiento de cobranza'},
+  desv:     {dir:'lo', v:[5,15],    u:'%',       n:'Desviación de pagos (real vs. estimado)'},
+  error:    {dir:'lo', v:[5,15],    u:'%',       n:'Error de pronóstico de caja'},
+  deprec:   {dir:'lo', v:[1,3],     u:'%',       n:'Depreciación semanal del Bs'},
+  deptras:  {dir:'lo', v:[10,30],   u:'%',       n:'Dependencia de traspasos intercompany'},
+  presion:  {dir:'lo', v:[60,80],   u:'%',       n:'Presión de nómina + impuestos'},
+  cuadre:   {dir:'lo', v:[1,5],     u:'%',       n:'Cuadre de traspasos intercompany'},
+};
+function umbral(k){ const u = (settings.umbrales||{})[k]; return (Array.isArray(u) && u.length===2 && isFinite(u[0]) && isFinite(u[1]))? u.map(Number) : UMBRAL_DEF[k].v.slice(); }
+function tonoDe(k, x){
+  if(x===null || x===undefined || isNaN(x)) return 'n';
+  const [g,a] = umbral(k);
+  return UMBRAL_DEF[k].dir==='hi'? (x>=g?'g':(x>=a?'a':'r')) : (x<=g?'g':(x<=a?'a':'r'));
+}
+function critTxt(k){ const [g,a] = umbral(k), u = UMBRAL_DEF[k].u==='%'? '%' : (' '+UMBRAL_DEF[k].u), hi = UMBRAL_DEF[k].dir==='hi';
+  return hi? `Verde ≥ ${g}${u} · Amarillo ≥ ${a}${u} · Rojo < ${a}${u}` : `Verde ≤ ${g}${u} · Amarillo ≤ ${a}${u} · Rojo > ${a}${u}`; }
+const TONO_COL = {g:'var(--accent)', a:'var(--amber)', r:'var(--danger)', n:'#9aa3af'}, TONO_TXT = {g:'Verde', a:'Amarillo', r:'Rojo', n:'Sin datos'};
+
+function empsDe(scope){ return scope==='CONS'? EMPRESAS.slice() : [scope]; }
+const sumConc = (e,d,fn)=> (CONCEPTS[e][d]||[]).reduce((a,c)=>a + tesSign(d,c)*(fn(c)||0), 0);
+// Estimado vs. real de las últimas 4 semanas CERRADAS (por empresa y departamento) — en Bs; el cociente no depende de la moneda
+function estVsReal(emps, depts){
+  const past = generateWeeks(0, 26); let est=0, real=0, nSem=0;
+  emps.forEach(e=>depts.forEach(d=>{
+    const cl = past.filter(w=>isClosed(e,d,w.key)).slice(-4); nSem = Math.max(nSem, cl.length);
+    cl.forEach(w=>{ est += sumConc(e,d,c=>getEstimate(e,d,c,w.key)); real += sumConc(e,d,c=>valueForWeek(e,d,c,w.key)); });
+  }));
+  return {est, real, nSem};
+}
+function traspasosDe(e, wk, cur){
+  const ing = (CONCEPTS[e].TESORERIA||[]).find(c=>normConcept(c)==='TRASPASOS INGRESOS'), egr = (CONCEPTS[e].TESORERIA||[]).find(c=>normConcept(c)==='TRASPASOS EGRESOS');
+  const conv = (x,w)=>{ if(cur==='bs') return x; const r=getEffectiveRate(w.key); return r? x/r : 0; };
+  let I=0, E=0; wk.forEach(w=>{ if(ing) I += conv(valueForWeek(e,'TESORERIA',ing,w.key)||0, w); if(egr) E += conv(valueForWeek(e,'TESORERIA',egr,w.key)||0, w); });
+  return {ing:I, egr:E, neto:I-E};
+}
+function computeSemaforos(scope, H, cur){
+  const D = computeInd(scope, H, cur), emps = empsDe(scope), unit = cur==='bs'? 'Bs':'US$', fv = v=> v===null||v===undefined? '—' : (cur==='bs'? fmtBs(v) : fmtUsd(v));
+  const weeks = weeksAll(), ci = Math.max(0, weeks.findIndex(w=>w.key===CURRENT_WEEK_KEY)), wk = weeks.slice(ci, ci+H);
+  const s = seriesFor(scope, weeks), out = [];
+  const push = (k, grupo, nombre, valTxt, raw, how, tono)=> out.push({k, grupo, nombre, valTxt, raw, how, tono: tono || tonoDe(k, raw)});
+  // 1. Saldo mínimo proyectado vs. mínimo de seguridad (el mínimo de seguridad se define en la tabla comparativa)
+  if(D.minRow){ const t = D.minRow.finBs<0? 'r' : (D.minRow.finBs < D.minS? 'a' : 'g');
+    out.push({k:'minimo', grupo:'Liquidez', nombre:'Saldo mínimo proyectado', valTxt:`${fv(D.minRow.fin)} ${unit} (S${D.minRow.w.week})`, raw:D.minRow.finBs, tono:t,
+      crit:`Verde ≥ mínimo de seguridad (${fmtBs(D.minS)} Bs) · Amarillo entre 0 y el mínimo · Rojo < 0`, how:'Menor saldo final semanal dentro del horizonte.'}); }
+  push('cobertura','Liquidez','Cobertura de caja', D.cobertura===null? '—' : `${D.cobertura.toFixed(1)} semanas de pagos`, D.cobertura, 'Saldo inicial de la semana actual ÷ pago semanal promedio (nómina + CxP + impuestos) del horizonte.');
+  // 2. Flujo neto de las próximas 4 semanas
+  { const n4 = D.rows.slice(0,4), neto4 = n4.reduce((a,r)=>a+(r.neto||0),0), fin4 = n4.length? n4[n4.length-1].finBs : null;
+    const t = fin4===null? 'n' : (neto4>=0? 'g' : (fin4 >= D.minS? 'a' : 'r'));
+    out.push({k:'neto4', grupo:'Generación', nombre:'Flujo neto próximas 4 semanas', valTxt:`${fv(neto4)} ${unit}`, raw:neto4, tono:t,
+      crit:'Verde ≥ 0 · Amarillo < 0 pero el saldo se mantiene sobre el mínimo · Rojo < 0 y el saldo cae bajo el mínimo', how:'Suma del neto semanal de las 4 semanas desde la actual.'}); }
+  push('razon','Generación','Razón cobros / pagos', D.ratio===null? '—' : `${D.ratio.toFixed(2)}×`, D.ratio, 'Cobros (CxC) ÷ pagos (nómina + CxP + impuestos) en el horizonte.');
+  { const pr = D.cobros>0? (D.nom + D.imp)/D.cobros*100 : null;
+    push('presion','Generación','Presión de nómina + impuestos', pr===null? '—' : `${pr.toFixed(0)}% de los cobros`, pr, '(Nómina + impuestos) ÷ cobros del horizonte: parte de lo que se cobra que ya está comprometida.'); }
+  // 3. Confiabilidad del pronóstico
+  { const c = estVsReal(emps,['CXC']), v = c.est>0? c.real/c.est*100 : null;
+    push('cumpl','Pronóstico','Cumplimiento de cobranza', v===null? `— (sin semanas cerradas con estimado)` : `${v.toFixed(0)}% (últimas ${c.nSem} sem. cerradas)`, v, 'Cobro real ÷ cobro estimado, últimas 4 semanas cerradas.'); }
+  { const p = estVsReal(emps,['NOMINA','CXP','IMPUESTOS']), v = p.est>0? (p.real-p.est)/p.est*100 : null;
+    push('desv','Pronóstico','Desviación de pagos', v===null? `— (sin semanas cerradas con estimado)` : `${v>=0?'+':''}${v.toFixed(1)}% (últimas ${p.nSem} sem. cerradas)`, v, '(Pago real − estimado) ÷ estimado, últimas 4 semanas cerradas. Positivo = se pagó más de lo previsto.'); }
+  { let k=-1; for(let i=ci;i>=0;i--) if(Math.abs(s[i].ajuste||0)>0.005){ k=i; break; }
+    if(k<0) push('error','Pronóstico','Error de pronóstico de caja','— (se necesitan 2 saldos de apertura reales)', null, '|Diferencia vs. saldo bancario real| ÷ pago semanal promedio. Aparece al cargar el saldo real de dos semanas distintas.');
+    else { const win = s.slice(Math.max(0,k-3), k+1), pagoAvg = win.reduce((a,x)=>a+x.sectionTotals.NOMINA+x.sectionTotals.CXP+x.sectionTotals.IMPUESTOS,0)/win.length, aj = s[k].ajuste, r = s[k].rate;
+      const pct = pagoAvg>0? Math.abs(aj)/pagoAvg*100 : null, ajTxt = cur==='bs'? fmtBs(aj) : (r? fmtUsd(aj/r) : '—');
+      push('error','Pronóstico','Error de pronóstico de caja', pct===null? '—' : `${aj>=0?'+':'−'}${ajTxt.replace('-','')} ${unit} en S${s[k].week.week} (${pct.toFixed(0)}% del pago semanal)`, pct, '|Diferencia vs. saldo bancario real| ÷ pago semanal promedio (4 sem.). Positivo = el banco tenía más de lo proyectado.'); } }
+  // 4. Cambiario
+  { const prevK = weeks[ci-1]? weeks[ci-1].key : null, rc = getEffectiveRate(CURRENT_WEEK_KEY), rp = prevK? getEffectiveRate(prevK) : null;
+    if(rc && rp){ const dep = (1 - rp/rc)*100, ini = s[ci].saldoIni, perd = ini/rp - ini/rc;
+      push('deprec','Cambiario','Depreciación semanal del Bs', `${dep>=0?'+':''}${dep.toFixed(2)}% (tasa ${rp.toFixed(2)} → ${rc.toFixed(2)}); saldo inicial pierde US$ ${fmtUsd(perd)}`, dep, '1 − tasa de la semana anterior ÷ tasa de la semana actual. Mide cuánto valor en US$ pierde la caja en Bs en una semana.'); }
+    else push('deprec','Cambiario','Depreciación semanal del Bs','— (falta la tasa BCV de la semana actual o de la anterior)', null, '1 − tasa anterior ÷ tasa actual.'); }
+  // 5. Intercompany
+  const wkI = wk, tr = emps.map(e=>({e, ...traspasosDe(e, wkI, cur)}));
+  if(scope==='CONS'){ const I = tr.reduce((a,x)=>a+x.ing,0), E = tr.reduce((a,x)=>a+x.egr,0), dif = I-E, base = Math.max(I,E), v = base>0? Math.abs(dif)/base*100 : (Math.abs(dif)<0.005? 0 : null);
+    push('cuadre','Intercompany','Cuadre de traspasos intercompany', base>0? `Diferencia ${fv(dif)} ${unit} (${v.toFixed(1)}% de lo traspasado)` : 'Sin traspasos en el horizonte', base>0? v : null, 'Traspasos de ingreso − traspasos de egreso de las 4 empresas: entre empresas del grupo deben netear a 0. Si no, hay un error de registro o un tercero.', base>0? undefined : 'n'); }
+  else { const x = tr[0], v = D.cobros>0? Math.max(0, x.neto)/D.cobros*100 : null;
+    push('deptras','Intercompany','Dependencia de traspasos', v===null? '—' : `${v.toFixed(0)}% de los cobros (neto recibido ${fv(Math.max(0,x.neto))} ${unit})`, v, '(Traspasos recibidos − enviados) ÷ cobros del horizonte, solo si la empresa es receptora neta.'); }
+  out.forEach(x=>{ if(!x.crit) x.crit = critTxt(x.k); });
+  return {rows:out, tr, D, unit, fv, H};
+}
+function renderSemaforos(){
+  const el = document.getElementById('indSemaforo'); if(!el) return;
+  const scope = document.getElementById('indScope').value || 'CONS', H = Number(document.getElementById('indHoriz').value) || 13, cur = document.getElementById('indCur').value || 'bs';
+  const R = computeSemaforos(scope, H, cur), n = t=>R.rows.filter(x=>x.tono===t).length;
+  let h = `<div class="viz-card"><h3 class="viz-h">Tablero de semáforos — ${scope==='CONS'? 'Consolidado (4 empresas)' : scope} · horizonte ${H} semanas
+    <span style="font-weight:400;font-size:12px;margin-left:10px;"><b style="color:var(--danger)">● ${n('r')} rojo(s)</b> · <b style="color:var(--amber)">● ${n('a')} amarillo(s)</b> · <b style="color:var(--accent)">● ${n('g')} verde(s)</b>${n('n')? ` · <span style="color:#9aa3af">● ${n('n')} sin datos</span>`:''}</span></h3>
+    <div class="table-scroll"><table class="grid" style="font-size:12px;"><thead><tr><th class="concept">Indicador</th><th style="text-align:left;">Valor</th><th>Semáforo</th><th style="text-align:left;">Umbral sugerido</th><th style="text-align:left;">Cómo se calcula</th></tr></thead><tbody>`;
+  let g = '';
+  R.rows.forEach(x=>{
+    if(x.grupo!==g){ g = x.grupo; h += `<tr class="subtotal-row"><td colspan="5" style="text-align:left;">${g}</td></tr>`; }
+    h += `<tr><td class="concept">${escHtml(x.nombre)}</td><td style="text-align:left;white-space:normal;">${escHtml(x.valTxt)}</td><td style="color:${TONO_COL[x.tono]};font-weight:700;">● ${TONO_TXT[x.tono]}</td><td style="text-align:left;white-space:normal;font-size:11px;">${escHtml(x.crit)}</td><td style="text-align:left;white-space:normal;font-size:11px;color:var(--text-mute);">${escHtml(x.how)}</td></tr>`;
+  });
+  h += `</tbody></table></div>`;
+  if(R.tr.length){
+    const I = R.tr.reduce((a,x)=>a+x.ing,0), E = R.tr.reduce((a,x)=>a+x.egr,0);
+    h += `<h3 class="viz-h" style="margin-top:14px;">Traspasos intercompany en el horizonte (${R.unit})</h3><div class="table-scroll"><table class="grid" style="font-size:12px;"><thead><tr><th class="concept">Empresa</th><th>Recibidos</th><th>Enviados</th><th>Neto recibido</th></tr></thead><tbody>`
+      + R.tr.map(x=>`<tr><td class="concept">${x.e}</td><td>${R.fv(x.ing)}</td><td>${R.fv(x.egr)}</td><td>${R.fv(x.neto)}</td></tr>`).join('')
+      + (R.tr.length>1? `<tr class="subtotal-row"><td class="concept">Grupo (debe ser 0)</td><td>${R.fv(I)}</td><td>${R.fv(E)}</td><td class="${Math.abs(I-E)>0.005?'diff-neg':''}">${R.fv(I-E)}</td></tr>` : '') + `</tbody></table></div>`;
+  }
+  h += `<details style="margin-top:10px;"><summary style="cursor:pointer;font-size:12.5px;color:var(--navy);font-weight:700;">Ajustar umbrales del semáforo</summary>
+    <p class="hint" style="margin:6px 0;">Son cifras de partida: calíbrelas con 8–12 semanas de historia y la política del grupo. Se guardan en su Drive. El mínimo de seguridad por empresa se edita en la tabla comparativa.</p>
+    <table class="grid" style="font-size:12px;"><thead><tr><th class="concept">Indicador</th><th>Verde si ${''}…</th><th>Amarillo si …</th><th style="text-align:left;">Unidad</th></tr></thead><tbody>`
+    + Object.keys(UMBRAL_DEF).map(k=>{ const d = UMBRAL_DEF[k], [a,b] = umbral(k), hi = d.dir==='hi';
+        return `<tr><td class="concept">${d.n}</td><td>${hi?'≥':'≤'} <input class="cell-input" type="number" step="any" data-umb="${k}" data-i="0" value="${a}" style="width:80px;"></td><td>${hi?'≥':'≤'} <input class="cell-input" type="number" step="any" data-umb="${k}" data-i="1" value="${b}" style="width:80px;"></td><td style="text-align:left;">${d.u}</td></tr>`; }).join('')
+    + `</tbody></table><button class="btn secondary small" id="btnUmbralReset" style="margin-top:6px;">Restaurar umbrales sugeridos</button></details></div>`;
+  el.innerHTML = h;
+  el.querySelectorAll('input[data-umb]').forEach(inp=>inp.addEventListener('change', ()=>{
+    const k = inp.dataset.umb, cur2 = umbral(k); cur2[Number(inp.dataset.i)] = Number(inp.value);
+    settings.umbrales = Object.assign({}, settings.umbrales||{}); settings.umbrales[k] = cur2; scheduleSaveToDrive(); renderSemaforos(); }));
+  const rb = document.getElementById('btnUmbralReset'); if(rb) rb.onclick = ()=>{ settings.umbrales = {}; scheduleSaveToDrive(); renderSemaforos(); };
+}
+
+function renderIndicadores(){ renderIndicadoresBase(); renderSemaforos(); }
 /* ================= INIT ================= */
 async function init(){
   document.getElementById('todayLabel').textContent = fmtDateLong(TODAY);
