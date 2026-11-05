@@ -409,7 +409,7 @@
 
 </main>
 
-<footer class="app">Flujo de Caja Semanal · CP · WF · TB · SV — datos guardados en Google Drive · versión 2026-11-05 · v7 · compártalo solo con el equipo autorizado</footer>
+<footer class="app">Flujo de Caja Semanal · CP · WF · TB · SV — datos guardados en Google Drive · versión 2026-11-05 · v8 · compártalo solo con el equipo autorizado</footer>
 
 <!-- Modal: cerrar semana / cargar real -->
 <div class="modal-bg" id="modalBg">
@@ -1926,12 +1926,12 @@ function renderProyEmpresa(){
   drillTable(document.getElementById('proyEmpresaTable'), 'P:'+emp, weekCols(weeks,emps,idx), rows, weeks, rates, cur, again);
   const mrows = rows.filter(r=>r.kind!=='rate').map(r=> r.key==='net'? Object.assign({}, r, {label:'TOTAL NETO DEL MES'}) : r.key==='sf'? Object.assign({}, r, {label:'SALDO FINAL DEL MES'}) : r);
   drillTable(document.getElementById('proyEmpresaMonthly'), 'PM:'+emp, monthCols(weeks), mrows, weeks, rates, cur, again);
-  const ci = Math.max(0, weeks.findIndex(w=>w.key===CURRENT_WEEK_KEY)), first=series[ci], last=series[series.length-1];
-  const cv=(v,s)=> cur==='bs'? v : (s.rate? v/s.rate : null);
+  const ci = Math.max(0, weeks.findIndex(w=>w.key===CURRENT_WEEK_KEY)), cs=series[ci];
+  const cv=(v,s)=> cur==='bs'? v : (s.rate? v/s.rate : null), W=`S${cs.week.week}`;
   kpiHtml(document.getElementById('kpiEmpresa'), [
-    [`Saldo inicial S${first.week.week} (semana actual)`, cv(first.saldoIni,first), cur],
-    [`Saldo proyectado (S${last.week.week})`, cv(last.saldoFin,last), cur],
-    ['Variación (semana actual → final)', cv(last.saldoFin-first.saldoIni,last), cur]], balanceNoteHTML(series.anchorDate));
+    [`Saldo inicial ${W} (semana actual)`, cv(cs.saldoIni,cs), cur],
+    [`Flujo neto ${W} (cobros − pagos de la semana)`, cv(cs.neto,cs), cur],
+    [`Saldo final ${W} (semana actual)`, cv(cs.saldoFin,cs), cur]], balanceNoteHTML(series.anchorDate)+' Los saldos de la semana actual no incluyen el acumulado de semanas futuras.');
 }
 
 function renderConsolidado(){
@@ -1957,14 +1957,14 @@ function renderConsolidado(){
   drillTable(document.getElementById('consTable'), 'C', weekCols(weeks,emps,idx), rows, weeks, rates, cur, again);
   const mrows = rows.filter(r=>r.kind!=='rate').map(r=> r.key==='net'? Object.assign({}, r, {label:'TOTAL NETO DEL MES'}) : r.key==='sf'? Object.assign({}, r, {label:'SALDO FINAL DEL MES (4 empresas)'}) : r);
   drillTable(document.getElementById('consMonthly'), 'CM', monthCols(weeks), mrows, weeks, rates, cur, again);
-  const ci = Math.max(0, weeks.findIndex(w=>w.key===CURRENT_WEEK_KEY)), n=weeks.length-1;
-  const cv=(v,i)=> cur==='bs'? v : (rates[i]? v/rates[i] : null);
-  const si = emps.reduce((a,e)=>a+all[e][ci].saldoIni,0), sf = emps.reduce((a,e)=>a+all[e][n].saldoFin,0);
+  const ci = Math.max(0, weeks.findIndex(w=>w.key===CURRENT_WEEK_KEY));
+  const cv=(v)=> cur==='bs'? v : (rates[ci]? v/rates[ci] : null), W=`S${weeks[ci].week}`;
+  const si = emps.reduce((a,e)=>a+all[e][ci].saldoIni,0), nt = emps.reduce((a,e)=>a+all[e][ci].neto,0), sf = emps.reduce((a,e)=>a+all[e][ci].saldoFin,0);
   const oldest = emps.map(e=>all[e].anchorDate).sort()[0];
   kpiHtml(document.getElementById('kpiConsolidado'), [
-    [`Saldo inicial S${weeks[ci].week} (semana actual, consolidado)`, cv(si,ci), cur],
-    [`Saldo proyectado (S${weeks[n].week})`, cv(sf,n), cur],
-    ['Variación (semana actual → final)', cv(sf-si,n), cur]], balanceNoteHTML(oldest).replace('Saldo bancario cargado','Saldo bancario más antiguo cargado'));
+    [`Saldo inicial ${W} (semana actual, 4 empresas)`, cv(si), cur],
+    [`Flujo neto ${W} (cobros − pagos de la semana)`, cv(nt), cur],
+    [`Saldo final ${W} (semana actual, 4 empresas)`, cv(sf), cur]], balanceNoteHTML(oldest).replace('Saldo bancario cargado','Saldo bancario más antiguo cargado')+' Los saldos de la semana actual no incluyen el acumulado de semanas futuras.');
 }
 
 /* ================= CONSOLIDADO ================= */
