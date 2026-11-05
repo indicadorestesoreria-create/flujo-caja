@@ -150,6 +150,12 @@
   .sync-bar .btn{ padding:3px 10px; font-size:11.5px; }
   .sb-gray{ background:#EEF1F5; color:#4b5563; } .sb-green{ background:#E8F5EE; color:#1a6b43; } .sb-amber{ background:#FFF4DB; color:#8a5a00; }
   .sb-red{ background:#FDECEA; color:#a12a1f; } .sb-blue{ background:#E6F0FC; color:#1c4f94; }
+  .wk-chip{ display:inline-block; font-size:9.5px; padding:1px 6px; border-radius:8px; margin-top:2px; font-weight:700; letter-spacing:.3px; background:#E5E7EB; color:#374151; }
+  .wk-chip.cerrada{ background:#D7F0E0; color:#17653A; } .wk-chip.parcial{ background:#FDEFC9; color:#8A5A00; } .wk-chip.vencida{ background:#FADBD8; color:#A12A1F; }
+  .wk-chip.actual{ background:#D6E6FA; color:#1F4FD8; }
+  table.grid thead th.wk-cerrada{ box-shadow:inset 0 -3px 0 #2E9D5B; } table.grid thead th.wk-vencida{ box-shadow:inset 0 -3px 0 #C0392B; } table.grid thead th.wk-actual{ box-shadow:inset 0 -3px 0 #1F4FD8; }
+  td.drillable{ cursor:pointer; } td.drillable:hover{ text-decoration:underline; } .caret{ color:var(--navy); font-size:11px; }
+  table.grid tr.drill-child td{ font-weight:400; font-size:12px; } table.grid tr.drill-child td.concept{ background:#FBFCFD; } table.grid tr.drill-child td.real{ background:#EAF6EF; }
 </style>
 </head>
 <body>
@@ -252,13 +258,14 @@
   <section id="view-empresa" class="view">
     <div class="panel">
       <h2>Proyección de flujo de caja por empresa</h2>
-      <p class="hint">Calculada a partir de lo cargado en "Captura por Área" (real si la semana está cerrada, estimado si no) y de la tasa BCV promedio de cada semana.</p>
+      <p class="hint">Calculada a partir de lo cargado en "Captura por Área" (real si la semana está cerrada, estimado si no) y de la tasa BCV promedio de cada semana. <b>Haga clic en una fila con ▸</b> para ver su composición por concepto. Cada semana indica si está CERRADA (dato real), PARCIAL, VENCIDA sin cerrar, ACTUAL o ESTIMADA; use los botones de abajo para ver más semanas anteriores o solo las cerradas.</p>
       <div class="subtabs company" id="companyTabsProy"></div>
       <div class="subtabs" id="currencyTabsProy">
         <button data-cur="bs" class="active">Bolívares (Bs)</button>
         <button data-cur="usd">Dólares (US$)</button>
       </div>
       <div class="toolbar"><button class="btn small btnExportFlujo">⬇ Exportar flujo a Excel (con fórmulas)</button></div>
+      <div class="toolbar" id="proyBar"></div>
       <div class="kpi-row" id="kpiEmpresa"></div>
       <div class="table-scroll"><table class="grid" id="proyEmpresaTable"></table></div>
       <h2 style="margin-top:18px;">Resumen mensual</h2>
@@ -270,12 +277,13 @@
   <section id="view-consolidado" class="view">
     <div class="panel">
       <h2>Consolidado — 4 empresas</h2>
-      <p class="hint">Suma de CP, WF, TB y SV semana a semana.</p>
+      <p class="hint">Suma de CP, WF, TB y SV semana a semana. <b>Haga clic en una fila con ▸</b> (Cuentas por Cobrar, Nómina, Saldo inicial, etc.) para ver su composición: primero por concepto y, al hacer clic en un concepto, por empresa. Las semanas CERRADAS muestran el dato real (celdas con fondo verde en el detalle); use los botones de abajo para ver más semanas anteriores o solo las cerradas. En semanas pasadas el saldo se reconstruye hacia atrás desde el último saldo bancario cargado.</p>
       <div class="subtabs" id="currencyTabsCons">
         <button data-cur="bs" class="active">Bolívares (Bs)</button>
         <button data-cur="usd">Dólares (US$)</button>
       </div>
       <div class="toolbar"><button class="btn small btnExportFlujo">⬇ Exportar flujo a Excel (con fórmulas)</button></div>
+      <div class="toolbar" id="consBar"></div>
       <div class="kpi-row" id="kpiConsolidado"></div>
       <div class="table-scroll"><table class="grid" id="consTable"></table></div>
       <h2 style="margin-top:18px;">Resumen mensual consolidado</h2>
@@ -401,7 +409,7 @@
 
 </main>
 
-<footer class="app">Flujo de Caja Semanal · CP · WF · TB · SV — datos guardados en Google Drive · versión 2026-11-03 · v6 · compártalo solo con el equipo autorizado</footer>
+<footer class="app">Flujo de Caja Semanal · CP · WF · TB · SV — datos guardados en Google Drive · versión 2026-11-05 · v7 · compártalo solo con el equipo autorizado</footer>
 
 <!-- Modal: cerrar semana / cargar real -->
 <div class="modal-bg" id="modalBg">
@@ -1812,109 +1820,151 @@ function balanceNoteHTML(fechaStr){
   return `Saldo bancario cargado al ${f}.`;
 }
 
-function renderProyEmpresa(){
-  renderCompanyTabsProy();
-  const weeks = generateWeeks(weeksCountCaptura, weeksPastCaptura);
-  const series = computeCompanySeries(currentCompanyProy, weeks);
-  const cur = currentCurProy;
-  const table = document.getElementById('proyEmpresaTable');
-  table.innerHTML='';
-  const thead=document.createElement('thead'); const trh=document.createElement('tr');
-  const thc=document.createElement('th'); thc.className='concept'; thc.textContent = cur==='bs'?'Concepto (Bs)':'Concepto (US$)'; trh.appendChild(thc);
-  weeks.forEach(w=>{
-    const th=document.createElement('th');
-    th.innerHTML = `S${w.week}·${w.isoYear}<br><span style="font-weight:400;font-size:10px;">${fmtDateShort(w.start)}–${fmtDateShort(w.end)}</span>`;
-    trh.appendChild(th);
-  });
-  thead.appendChild(trh); table.appendChild(thead);
-  const tbody=document.createElement('tbody');
+/* ================= PROYECCIÓN Y CONSOLIDADO: composición por concepto + semanas cerradas ================= */
+const drill = {open:{}, past:{proy:8, cons:8}, solo:{proy:false, cons:false}};
+const DRILL_MAX_PAST = 104;
 
-  function convert(val,rate){ if(cur==='bs') return val; if(rate===null) return null; return val/rate; }
-
-  function addRow(label, getter, cls){
-    const tr=document.createElement('tr'); if(cls) tr.classList.add(cls);
-    const tdc=document.createElement('td'); tdc.className='concept'; tdc.textContent=label; tr.appendChild(tdc);
-    series.forEach(s=>{
-      const td=document.createElement('td');
-      const v = convert(getter(s), s.rate);
-      td.textContent = cur==='bs'? fmtBs(v) : fmtUsd(v);
-      tr.appendChild(td);
-    });
-    tbody.appendChild(tr);
-  }
-  addRow('SALDO INICIAL', s=>s.saldoIni, 'total-row');
-  DEPTS.forEach(d=>{
-    addRow(`${d.sign>0?'(+)':'(-)'} ${d.label}`, s=>s.sectionTotals[d.key], 'subtotal-row');
-  });
-  addRow('TOTAL NETO SEMANAL', s=>s.neto, 'subtotal-row');
-  addRow('SALDO FINAL', s=>s.saldoFin, 'total-row');
-  addRow('Tasa BCV promedio semana', s=> s.rate, '');
-  table.appendChild(tbody);
-
-  // KPI
-  const kpiEl = document.getElementById('kpiEmpresa');
-  const last = series[series.length-1];
-  const curIdx = Math.max(0, weeks.findIndex(w=>w.key===CURRENT_WEEK_KEY));
-  const first = series[curIdx];
-  kpiEl.innerHTML='';
-  const kpis = [
-    [`Saldo inicial S${first.week.week} (semana actual)`, convert(first.saldoIni,first.rate)],
-    [`Saldo proyectado (S${last.week.week})`, convert(last.saldoFin,last.rate)],
-    ['Variación (semana actual → final)', convert(last.saldoFin-first.saldoIni, last.rate)],
-  ];
-  kpis.forEach(([lbl,val])=>{
-    const div=document.createElement('div'); div.className='kpi';
-    div.innerHTML = `<div class="lbl">${lbl}</div><div class="val ${val<0?'neg':''}">${cur==='bs'?fmtBs(val):fmtUsd(val)} ${cur==='bs'?'Bs':'US$'}</div>`;
-    kpiEl.appendChild(div);
-  });
-  { const note=document.createElement('div'); note.style.cssText='font-size:11.5px;color:var(--text-mute);align-self:center;max-width:380px;';
-    note.innerHTML = balanceNoteHTML(series.anchorDate); kpiEl.appendChild(note); }
-
-  renderMonthlySummary(series, cur, document.getElementById('proyEmpresaMonthly'));
+function semStatus(w, emps){   // estado de la semana para el conjunto de empresas × departamentos con conceptos
+  let c=0, t=0;
+  // cuenta solo empresa × departamento con movimiento esa semana (o ya cerrados): un departamento sin datos no impide que la semana figure como cerrada
+  emps.forEach(e=>DEPTS.forEach(d=>{ const cl = isClosed(e,d.key,w.key);
+    if(cl || (CONCEPTS[e][d.key]||[]).some(x=> (getEstimate(e,d.key,x,w.key)||0)!==0 || (getActual(e,d.key,x,w.key)||0)!==0)){ t++; if(cl) c++; } }));
+  if(t && c===t) return {k:'cerrada', txt:'CERRADA'};
+  if(c>0) return {k:'parcial', txt:`PARCIAL ${c}/${t}`};
+  if(w.key===CURRENT_WEEK_KEY) return {k:'actual', txt:'ACTUAL'};
+  if(w.end < stripTime(TODAY)) return {k:'vencida', txt:'VENCIDA'};
+  return {k:'estimada', txt:'ESTIMADA'};
+}
+function drillBar(el, id, weeks, emps, again){
+  const nCerr = weeks.filter(w=>semStatus(w,emps).k==='cerrada').length, nPar = weeks.filter(w=>semStatus(w,emps).k==='parcial').length;
+  el.innerHTML = `<button class="btn secondary small" data-a="past">← Ver 8 semanas anteriores</button>
+    <button class="btn secondary small" data-a="reset">Vista normal (8 anteriores)</button>
+    <label style="font-size:12px;display:inline-flex;align-items:center;gap:6px;"><input type="checkbox" data-a="solo" ${drill.solo[id]?'checked':''}> Mostrar solo semanas cerradas</label>
+    <span style="font-size:12px;color:var(--text-mute);">Mostrando ${drill.past[id]} semanas vencidas · en ese rango hay <b>${nCerr}</b> cerrada(s)${nPar? ` y ${nPar} parcial(es)`:''}. Valores en semanas CERRADAS = reales.</span>`;
+  el.querySelector('[data-a=past]').onclick = ()=>{ drill.past[id] = Math.min(DRILL_MAX_PAST, drill.past[id]+8); again(); };
+  el.querySelector('[data-a=reset]').onclick = ()=>{ drill.past[id] = 8; drill.solo[id] = false; again(); };
+  el.querySelector('[data-a=solo]').onchange = (ev)=>{ drill.solo[id] = ev.target.checked; again(); };
 }
 
-function renderMonthlySummary(series, cur, table){
-  // group weeks by month label
-  const months = [];
-  const byMonth = {};
-  series.forEach(s=>{
-    const m = s.week.monthLabel;
-    if(!byMonth[m]){ byMonth[m]=[]; months.push(m); }
-    byMonth[m].push(s);
-  });
+/* Renderizador común. cols = [{head, idxs:[índices en weeks], week?}], rows = [{key,label,cls,kind,val,children?,real?}] */
+function drillTable(table, scope, cols, rows, weeks, rates, cur, again){
+  const conv = (v,i)=> cur==='bs'? v : (rates[i]===null||rates[i]===undefined? null : v/rates[i]);
+  const cellVal = (row,c)=>{
+    if(row.kind==='rate') return c.idxs.length===1? rates[c.idxs[0]] : null;
+    if(row.kind==='first') return conv(row.val(c.idxs[0]), c.idxs[0]);
+    if(row.kind==='last')  return conv(row.val(c.idxs[c.idxs.length-1]), c.idxs[c.idxs.length-1]);
+    let sum=0, any=false; c.idxs.forEach(i=>{ const v=conv(row.val(i),i); if(v!==null){ sum+=v; any=true; } }); return any? sum : null;
+  };
+  const fmt = v=> cur==='bs'? fmtBs(v) : fmtUsd(v);
   table.innerHTML='';
-  const thead=document.createElement('thead'); const trh=document.createElement('tr');
-  const thc=document.createElement('th'); thc.className='concept'; thc.textContent='Concepto'; trh.appendChild(thc);
-  months.forEach(m=>{ const th=document.createElement('th'); th.textContent=m; trh.appendChild(th); });
+  const thead=document.createElement('thead'), trh=document.createElement('tr');
+  const thc=document.createElement('th'); thc.className='concept'; thc.textContent = cur==='bs'?'Concepto (Bs)':'Concepto (US$)'; trh.appendChild(thc);
+  cols.forEach(c=>{ const th=document.createElement('th'); th.innerHTML=c.head; if(c.cls) th.classList.add(c.cls); trh.appendChild(th); });
   thead.appendChild(trh); table.appendChild(thead);
-  const tbody=document.createElement('tbody');
-  function convert(val,rate){ if(cur==='bs') return val; if(rate===null||rate===undefined) return null; return val/rate; }
-  function addRow(label, monthAgg, cls){
-    const tr=document.createElement('tr'); if(cls) tr.classList.add(cls);
-    const tdc=document.createElement('td'); tdc.className='concept'; tdc.textContent=label; tr.appendChild(tdc);
-    months.forEach(m=>{
-      const td=document.createElement('td');
-      const v = monthAgg(byMonth[m]);
-      td.textContent = cur==='bs'? fmtBs(v) : fmtUsd(v);
+  const tbody=document.createElement('tbody'); let ocultas=0;
+  function emit(row, level, path){
+    const full = scope+'|'+path+row.key, hasKids = !!row.children, open = !!drill.open[full];
+    if(level>0 && row.kind==='flow'){   // se ocultan los conceptos sin movimiento en el rango mostrado
+      if(cols.every(c=>{ const v=cellVal(row,c); return v===null || Math.abs(v)<0.005; })){ ocultas++; return; }
+    }
+    const tr=document.createElement('tr'); if(row.cls) tr.classList.add(row.cls); if(level>0) tr.classList.add('drill-child','lvl'+level);
+    const tdc=document.createElement('td'); tdc.className='concept';
+    tdc.innerHTML = (hasKids? `<span class="caret">${open?'▾':'▸'}</span> ` : '') + escHtml(row.label);
+    if(level>0) tdc.style.paddingLeft = (8+level*16)+'px';
+    if(hasKids){ tdc.classList.add('drillable'); tdc.title='Clic para ver la composición'; tdc.onclick=()=>{ drill.open[full]=!open; again(); }; }
+    tr.appendChild(tdc);
+    cols.forEach(c=>{
+      const td=document.createElement('td'), v=cellVal(row,c); td.textContent = v===null? '—' : fmt(v);
+      if(level>0 && row.real && c.idxs.length===1){ const r=row.real(c.idxs[0]); if(r){ td.classList.add('real'); td.title = r; } }
       tr.appendChild(td);
     });
     tbody.appendChild(tr);
+    if(hasKids && open) row.children().forEach(ch=>emit(ch, level+1, path+row.key+'>'));
   }
-  addRow('SALDO INICIAL', arr=>convert(arr[0].saldoIni, arr[0].rate), 'total-row');
-  DEPTS.forEach(d=>{
-    addRow(`${d.sign>0?'(+)':'(-)'} ${d.label}`, arr=>{
-      let sum=0, any=false;
-      arr.forEach(s=>{ const v=convert(s.sectionTotals[d.key], s.rate); if(v!==null){sum+=v; any=true;} });
-      return any? sum : null;
-    }, 'subtotal-row');
-  });
-  addRow('TOTAL NETO DEL MES', arr=>{
-    let sum=0, any=false;
-    arr.forEach(s=>{ const v=convert(s.neto,s.rate); if(v!==null){sum+=v;any=true;} });
-    return any? sum: null;
-  }, 'subtotal-row');
-  addRow('SALDO FINAL DEL MES', arr=>convert(arr[arr.length-1].saldoFin, arr[arr.length-1].rate), 'total-row');
+  rows.forEach(r=>emit(r,0,''));
   table.appendChild(tbody);
+  if(ocultas){ const tr=document.createElement('tr'); const td=document.createElement('td'); td.colSpan=cols.length+1; td.style.cssText='text-align:left;font-size:11px;color:var(--text-mute);'; td.textContent=`${ocultas} concepto(s) sin movimiento en este rango no se muestran.`; tr.appendChild(td); tbody.appendChild(tr); }
+}
+function weekCols(weeks, emps, idxList){
+  return idxList.map(i=>{ const w=weeks[i], st=semStatus(w,emps);
+    return {idxs:[i], cls:'wk-'+st.k, head:`S${w.week}·${w.isoYear}<br><span style="font-weight:400;font-size:10px;">${fmtDateShort(w.start)}–${fmtDateShort(w.end)}</span><br><span class="wk-chip ${st.k}">${st.txt}</span>`}; });
+}
+function monthCols(weeks){
+  const order=[], by={}; weeks.forEach((w,i)=>{ const m=w.monthLabel; if(!by[m]){by[m]=[]; order.push(m);} by[m].push(i); });
+  return order.map(m=>({idxs:by[m], head:m}));
+}
+function conceptRealTip(emps, d, c, w){ // texto de "real" para un concepto en una semana (si está cerrada)
+  const have = emps.filter(e=>(CONCEPTS[e][d]||[]).some(x=>normConcept(x)===normConcept(c)));
+  const cl = have.filter(e=>isClosed(e,d,w.key));
+  if(!cl.length) return null;
+  return have.length===1 ? 'Real (semana cerrada)' : `Real en ${cl.length} de ${have.length} empresas`;
+}
+function kpiHtml(el, items, note){
+  el.innerHTML='';
+  items.forEach(([lbl,val,cur])=>{ const div=document.createElement('div'); div.className='kpi';
+    div.innerHTML = `<div class="lbl">${lbl}</div><div class="val ${val<0?'neg':''}">${cur==='bs'?fmtBs(val):fmtUsd(val)} ${cur==='bs'?'Bs':'US$'}</div>`; el.appendChild(div); });
+  const n=document.createElement('div'); n.style.cssText='font-size:11.5px;color:var(--text-mute);align-self:center;max-width:380px;'; n.innerHTML=note; el.appendChild(n);
+}
+
+function renderProyEmpresa(){
+  renderCompanyTabsProy();
+  const emp = currentCompanyProy, cur = currentCurProy, emps=[emp];
+  const weeks = generateWeeks(weeksCountCaptura, drill.past.proy);
+  const series = computeCompanySeries(emp, weeks), rates = series.map(s=>s.rate);
+  const again = renderProyEmpresa;
+  drillBar(document.getElementById('proyBar'), 'proy', weeks, emps, again);
+  const idx = weeks.map((w,i)=>i).filter(i=> !drill.solo.proy || semStatus(weeks[i],emps).k==='cerrada');
+  const rows = [
+    {key:'si', label:'SALDO INICIAL', cls:'total-row', kind:'first', val:i=>series[i].saldoIni},
+    ...DEPTS.map(d=>({key:'d:'+d.key, label:`${d.sign>0?'(+)':'(-)'} ${d.label}`, cls:'subtotal-row', kind:'flow', val:i=>series[i].sectionTotals[d.key],
+      children:()=>(CONCEPTS[emp][d.key]||[]).map(c=>({key:'c:'+c, label:signTag(d.key,c)+c, cls:'', kind:'flow',
+        val:i=>tesSign(d.key,c)*(valueForWeek(emp,d.key,c,weeks[i].key)||0), real:i=>conceptRealTip(emps,d.key,c,weeks[i])}))})),
+    {key:'net', label:'TOTAL NETO SEMANAL', cls:'subtotal-row', kind:'flow', val:i=>series[i].neto},
+    {key:'sf', label:'SALDO FINAL', cls:'total-row', kind:'last', val:i=>series[i].saldoFin},
+    {key:'tc', label:'Tasa BCV promedio semana', cls:'', kind:'rate', val:i=>series[i].rate},
+  ];
+  drillTable(document.getElementById('proyEmpresaTable'), 'P:'+emp, weekCols(weeks,emps,idx), rows, weeks, rates, cur, again);
+  const mrows = rows.filter(r=>r.kind!=='rate').map(r=> r.key==='net'? Object.assign({}, r, {label:'TOTAL NETO DEL MES'}) : r.key==='sf'? Object.assign({}, r, {label:'SALDO FINAL DEL MES'}) : r);
+  drillTable(document.getElementById('proyEmpresaMonthly'), 'PM:'+emp, monthCols(weeks), mrows, weeks, rates, cur, again);
+  const ci = Math.max(0, weeks.findIndex(w=>w.key===CURRENT_WEEK_KEY)), first=series[ci], last=series[series.length-1];
+  const cv=(v,s)=> cur==='bs'? v : (s.rate? v/s.rate : null);
+  kpiHtml(document.getElementById('kpiEmpresa'), [
+    [`Saldo inicial S${first.week.week} (semana actual)`, cv(first.saldoIni,first), cur],
+    [`Saldo proyectado (S${last.week.week})`, cv(last.saldoFin,last), cur],
+    ['Variación (semana actual → final)', cv(last.saldoFin-first.saldoIni,last), cur]], balanceNoteHTML(series.anchorDate));
+}
+
+function renderConsolidado(){
+  const cur = currentCurCons, emps = EMPRESAS.slice();
+  const weeks = generateWeeks(weeksCountCaptura, drill.past.cons);
+  const all = {}; emps.forEach(e=>{ all[e]=computeCompanySeries(e,weeks); });
+  const rates = weeks.map(w=>getEffectiveRate(w.key)), again = renderConsolidado;
+  drillBar(document.getElementById('consBar'), 'cons', weeks, emps, again);
+  const idx = weeks.map((w,i)=>i).filter(i=> !drill.solo.cons || semStatus(weeks[i],emps).k==='cerrada');
+  const porEmp = f=> ()=>emps.map(e=>({key:'e:'+e, label:EMPRESA_NOMBRE[e]||e, cls:'', kind:f.kind, val:i=>f.get(all[e][i])}));
+  const union = d=>{ const m=new Map(); emps.forEach(e=>(CONCEPTS[e][d.key]||[]).forEach(c=>{ const k=normConcept(c); if(!m.has(k)) m.set(k,c); })); return [...m.values()]; };
+  const rows = [
+    {key:'si', label:'SALDO INICIAL (4 empresas)', cls:'total-row', kind:'first', val:i=>emps.reduce((a,e)=>a+all[e][i].saldoIni,0), children:porEmp({kind:'first', get:s=>s.saldoIni})},
+    ...DEPTS.map(d=>({key:'d:'+d.key, label:`${d.sign>0?'(+)':'(-)'} ${d.label}`, cls:'subtotal-row', kind:'flow', val:i=>emps.reduce((a,e)=>a+all[e][i].sectionTotals[d.key],0),
+      children:()=>union(d).map(c=>{ const have = emps.filter(e=>(CONCEPTS[e][d.key]||[]).some(x=>normConcept(x)===normConcept(c)));
+        const one = e=>{ const cc=(CONCEPTS[e][d.key]||[]).find(x=>normConcept(x)===normConcept(c)); return i=>tesSign(d.key,cc)*(valueForWeek(e,d.key,cc,weeks[i].key)||0); };
+        return {key:'c:'+normConcept(c), label:signTag(d.key,c)+c, cls:'', kind:'flow', val:i=>have.reduce((a,e)=>a+one(e)(i),0), real:i=>conceptRealTip(emps,d.key,c,weeks[i]),
+          children: have.length>1? ()=>have.map(e=>({key:'e:'+e, label:EMPRESA_NOMBRE[e]||e, cls:'', kind:'flow', val:one(e), real:i=>isClosed(e,d.key,weeks[i].key)?'Real (semana cerrada)':null})) : null}; })})),
+    {key:'net', label:'TOTAL NETO SEMANAL', cls:'subtotal-row', kind:'flow', val:i=>emps.reduce((a,e)=>a+all[e][i].neto,0), children:porEmp({kind:'flow', get:s=>s.neto})},
+    {key:'sf', label:'SALDO FINAL (4 empresas)', cls:'total-row', kind:'last', val:i=>emps.reduce((a,e)=>a+all[e][i].saldoFin,0), children:porEmp({kind:'last', get:s=>s.saldoFin})},
+    {key:'tc', label:'Tasa BCV promedio semana', cls:'', kind:'rate', val:i=>rates[i]},
+  ];
+  drillTable(document.getElementById('consTable'), 'C', weekCols(weeks,emps,idx), rows, weeks, rates, cur, again);
+  const mrows = rows.filter(r=>r.kind!=='rate').map(r=> r.key==='net'? Object.assign({}, r, {label:'TOTAL NETO DEL MES'}) : r.key==='sf'? Object.assign({}, r, {label:'SALDO FINAL DEL MES (4 empresas)'}) : r);
+  drillTable(document.getElementById('consMonthly'), 'CM', monthCols(weeks), mrows, weeks, rates, cur, again);
+  const ci = Math.max(0, weeks.findIndex(w=>w.key===CURRENT_WEEK_KEY)), n=weeks.length-1;
+  const cv=(v,i)=> cur==='bs'? v : (rates[i]? v/rates[i] : null);
+  const si = emps.reduce((a,e)=>a+all[e][ci].saldoIni,0), sf = emps.reduce((a,e)=>a+all[e][n].saldoFin,0);
+  const oldest = emps.map(e=>all[e].anchorDate).sort()[0];
+  kpiHtml(document.getElementById('kpiConsolidado'), [
+    [`Saldo inicial S${weeks[ci].week} (semana actual, consolidado)`, cv(si,ci), cur],
+    [`Saldo proyectado (S${weeks[n].week})`, cv(sf,n), cur],
+    ['Variación (semana actual → final)', cv(sf-si,n), cur]], balanceNoteHTML(oldest).replace('Saldo bancario cargado','Saldo bancario más antiguo cargado'));
 }
 
 /* ================= CONSOLIDADO ================= */
@@ -1925,96 +1975,6 @@ document.getElementById('currencyTabsCons').addEventListener('click',(e)=>{
   currentCurCons = e.target.dataset.cur;
   renderConsolidado();
 });
-function renderConsolidado(){
-  const weeks = generateWeeks(weeksCountCaptura, weeksPastCaptura);
-  const cur = currentCurCons;
-  const allSeries = {};
-  EMPRESAS.forEach(e=>{ allSeries[e] = computeCompanySeries(e, weeks); });
-
-  function convertVal(val,rate){ if(cur==='bs') return val; if(rate===null) return null; return val/rate; }
-
-  const combined = weeks.map((w,i)=>{
-    let saldoIni=0, saldoFin=0, neto=0; const sectionTotals={};
-    DEPTS.forEach(d=>sectionTotals[d.key]=0);
-    let rate = getEffectiveRate(w.key);
-    EMPRESAS.forEach(e=>{
-      const s = allSeries[e][i];
-      saldoIni += convertVal(s.saldoIni, s.rate) ?? 0;
-      saldoFin += convertVal(s.saldoFin, s.rate) ?? 0;
-      neto += convertVal(s.neto, s.rate) ?? 0;
-      DEPTS.forEach(d=>{ sectionTotals[d.key]+= convertVal(s.sectionTotals[d.key], s.rate) ?? 0; });
-    });
-    return {week:w, saldoIni, saldoFin, neto, sectionTotals, rate};
-  });
-
-  const table = document.getElementById('consTable');
-  table.innerHTML='';
-  const thead=document.createElement('thead'); const trh=document.createElement('tr');
-  const thc=document.createElement('th'); thc.className='concept'; thc.textContent = cur==='bs'?'Concepto (Bs)':'Concepto (US$)'; trh.appendChild(thc);
-  weeks.forEach(w=>{
-    const th=document.createElement('th');
-    th.innerHTML = `S${w.week}·${w.isoYear}<br><span style="font-weight:400;font-size:10px;">${fmtDateShort(w.start)}–${fmtDateShort(w.end)}</span>`;
-    trh.appendChild(th);
-  });
-  thead.appendChild(trh); table.appendChild(thead);
-  const tbody=document.createElement('tbody');
-  function addRow(label, getter, cls){
-    const tr=document.createElement('tr'); if(cls) tr.classList.add(cls);
-    const tdc=document.createElement('td'); tdc.className='concept'; tdc.textContent=label; tr.appendChild(tdc);
-    combined.forEach(s=>{
-      const td=document.createElement('td');
-      td.textContent = cur==='bs'? fmtBs(getter(s)) : fmtUsd(getter(s));
-      tr.appendChild(td);
-    });
-    tbody.appendChild(tr);
-  }
-  addRow('SALDO INICIAL (4 empresas)', s=>s.saldoIni,'total-row');
-  DEPTS.forEach(d=> addRow(`${d.sign>0?'(+)':'(-)'} ${d.label}`, s=>s.sectionTotals[d.key],'subtotal-row'));
-  addRow('TOTAL NETO SEMANAL', s=>s.neto,'subtotal-row');
-  addRow('SALDO FINAL (4 empresas)', s=>s.saldoFin,'total-row');
-  table.appendChild(tbody);
-
-  const kpiEl = document.getElementById('kpiConsolidado');
-  kpiEl.innerHTML='';
-  const curIdxC = Math.max(0, weeks.findIndex(w=>w.key===CURRENT_WEEK_KEY));
-  const first=combined[curIdxC], last=combined[combined.length-1];
-  const kpis = [
-    [`Saldo inicial S${first.week.week} (semana actual, consolidado)`, first.saldoIni],
-    [`Saldo proyectado (S${last.week.week})`, last.saldoFin],
-    ['Variación (semana actual → final)', last.saldoFin-first.saldoIni],
-  ];
-  kpis.forEach(([lbl,val])=>{
-    const div=document.createElement('div'); div.className='kpi';
-    div.innerHTML = `<div class="lbl">${lbl}</div><div class="val ${val<0?'neg':''}">${cur==='bs'?fmtBs(val):fmtUsd(val)} ${cur==='bs'?'Bs':'US$'}</div>`;
-    kpiEl.appendChild(div);
-  });
-  { const oldest = EMPRESAS.map(e=>allSeries[e].anchorDate).sort()[0];
-    const note=document.createElement('div'); note.style.cssText='font-size:11.5px;color:var(--text-mute);align-self:center;max-width:380px;';
-    note.innerHTML = balanceNoteHTML(oldest).replace('Saldo bancario cargado','Saldo bancario más antiguo cargado'); kpiEl.appendChild(note); }
-
-  // monthly summary consolidated
-  const monthsTable = document.getElementById('consMonthly');
-  const months=[]; const byMonth={};
-  combined.forEach(s=>{ const m=s.week.monthLabel; if(!byMonth[m]){byMonth[m]=[]; months.push(m);} byMonth[m].push(s); });
-  monthsTable.innerHTML='';
-  const th2=document.createElement('thead'); const tr2=document.createElement('tr');
-  const tc2=document.createElement('th'); tc2.className='concept'; tc2.textContent='Concepto'; tr2.appendChild(tc2);
-  months.forEach(m=>{ const th=document.createElement('th'); th.textContent=m; tr2.appendChild(th); });
-  th2.appendChild(tr2); monthsTable.appendChild(th2);
-  const tb2=document.createElement('tbody');
-  function addRow2(label, agg, cls){
-    const tr=document.createElement('tr'); if(cls) tr.classList.add(cls);
-    const tdc=document.createElement('td'); tdc.className='concept'; tdc.textContent=label; tr.appendChild(tdc);
-    months.forEach(m=>{ const td=document.createElement('td'); td.textContent= cur==='bs'?fmtBs(agg(byMonth[m])):fmtUsd(agg(byMonth[m])); tr.appendChild(td); });
-    tb2.appendChild(tr);
-  }
-  addRow2('SALDO INICIAL', arr=>arr[0].saldoIni,'total-row');
-  DEPTS.forEach(d=> addRow2(`${d.sign>0?'(+)':'(-)'} ${d.label}`, arr=>arr.reduce((a,s)=>a+s.sectionTotals[d.key],0),'subtotal-row'));
-  addRow2('TOTAL NETO DEL MES', arr=>arr.reduce((a,s)=>a+s.neto,0),'subtotal-row');
-  addRow2('SALDO FINAL DEL MES', arr=>arr[arr.length-1].saldoFin,'total-row');
-  monthsTable.appendChild(tb2);
-}
-
 /* ================= TASA DE CAMBIO ================= */
 document.getElementById('btnAbrirBCV').onclick = ()=>{
   window.open('https://www.bcv.org.ve/', '_blank', 'noopener');
