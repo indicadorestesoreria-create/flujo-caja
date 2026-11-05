@@ -409,7 +409,7 @@
 
 </main>
 
-<footer class="app">Flujo de Caja Semanal · CP · WF · TB · SV — datos guardados en Google Drive · versión 2026-11-05 · v8 · compártalo solo con el equipo autorizado</footer>
+<footer class="app">Flujo de Caja Semanal · CP · WF · TB · SV — datos guardados en Google Drive · versión 2026-11-05 · v9 · compártalo solo con el equipo autorizado</footer>
 
 <!-- Modal: cerrar semana / cargar real -->
 <div class="modal-bg" id="modalBg">
@@ -1777,47 +1777,84 @@ function bankAnchorDate(empresa){
   BANK_LIST.forEach(b=>{ const f=getLatestBankBalance(empresa,b).fecha; if(f && (best===null || f>best)) best=f; });
   return best;
 }
-// Convención: el saldo bancario cargado es el SALDO INICIAL de la semana que contiene su fecha.
-// Hacia adelante se acumula el neto semanal; hacia atrás (semanas vencidas mostradas) se reconstruye
-// restando el neto, para que el saldo de la semana actual sea siempre el cargado en Disponibilidad Inicial.
+// Fecha (YYYY-MM-DD) desplazada n días
+function isoAddDays(iso, n){ const d = new Date(iso+'T00:00:00Z'); d.setUTCDate(d.getUTCDate()+n); return d.toISOString().slice(0,10); }
+// Saldo de APERTURA REAL de una semana: saldos bancarios cargados con fecha en la ventana [viernes anterior … lunes] de esa semana
+// (el cierre del viernes/sábado/domingo es el saldo con que abre el lunes). Por banco se toma el último saldo dentro de la ventana;
+// un banco sin carga en la ventana aporta su último saldo anterior (y se avisa si tiene más de 14 días).
+// Devuelve null si ningún banco tiene saldo en la ventana: esa semana NO tiene apertura real.
+function aperturaReal(empresa, w){
+  const mon = isoDateStr(w.start), lo = isoAddDays(mon,-3), today = isoDateStr(TODAY);
+  if(mon > today) return null;
+  let any = false, saldo = 0; const viejos = [];
+  BANK_LIST.forEach(b=>{
+    const h = ((bankHistory[empresa]||{})[b])||{}; let best = null, bestIn = null;
+    Object.keys(h).forEach(d=>{ if(d<=mon && d<=today){ if(best===null || d>best) best = d; if(d>=lo && (bestIn===null || d>bestIn)) bestIn = d; } });
+    if(bestIn!==null){ any = true; saldo += Number(h[bestIn])||0; }
+    else if(best!==null){ saldo += Number(h[best])||0; if(Math.round((Date.parse(mon)-Date.parse(best))/86400000) > 14) viejos.push(b+' ('+best+')'); }
+  });
+  return any? {saldo, viejos} : null;
+}
+// Saldo inicial de cada semana = saldo bancario real de su primer día cuando existe (aperturaReal); si no existe se arrastra el saldo final de
+// la semana anterior (saldo inicial + neto). Entre dos aperturas reales, la diferencia entre el saldo final proyectado y la apertura real
+// de la semana siguiente queda visible en "ajuste" (cobros/pagos reales distintos de lo cargado, movimientos no registrados, etc.).
+// Antes de la primera apertura real, las semanas se reconstruyen hacia atrás (final = inicial de la siguiente; inicial = final − neto).
+// Si no hay ninguna apertura real, se usa el último saldo cargado como saldo inicial de la semana que contiene su fecha (modo aproximado).
 function computeCompanySeries(empresa, weeks){
   const n = weeks.length;
-  const base = getOpeningBalance(empresa);
-  const aDate = bankAnchorDate(empresa) || isoDateStr(TODAY);
-  let anchorIdx = weeks.findIndex(w => aDate>=isoDateStr(w.start) && aDate<=isoDateStr(w.end));
-  if(anchorIdx < 0) anchorIdx = 0; // saldo anterior a la ventana mostrada: se ancla en la primera semana
   const rows = weeks.map(w=>{
-    const sectionTotals={};
-    DEPTS.forEach(d=>{
-      const conceptos = CONCEPTS[empresa][d.key]||[];
-      let sum=0;
-      conceptos.forEach(c=>{ sum += tesSign(d.key,c)*(valueForWeek(empresa,d.key,c,w.key)||0); });
-      sectionTotals[d.key]=sum;
-    });
-    let neto=0;
-    DEPTS.forEach(d=>{ neto += DEPT_SIGN[d.key]*sectionTotals[d.key]; });
-    return {week:w, sectionTotals, neto, saldoIni:0, saldoFin:0, rate:getEffectiveRate(w.key)};
+    const sectionTotals = {};
+    DEPTS.forEach(d=>{ let sum=0; (CONCEPTS[empresa][d.key]||[]).forEach(c=>{ sum += tesSign(d.key,c)*(valueForWeek(empresa,d.key,c,w.key)||0); }); sectionTotals[d.key]=sum; });
+    let neto=0; DEPTS.forEach(d=>{ neto += DEPT_SIGN[d.key]*sectionTotals[d.key]; });
+    return {week:w, sectionTotals, neto, ajuste:0, ctrl:false, saldoIni:0, saldoFin:0, rate:getEffectiveRate(w.key)};
   });
-  rows[anchorIdx].saldoIni = base;
-  for(let i=anchorIdx;i<n;i++){
-    if(i>anchorIdx) rows[i].saldoIni = rows[i-1].saldoFin;
-    rows[i].saldoFin = rows[i].saldoIni + rows[i].neto;
+  const ctrl = weeks.map(w=>aperturaReal(empresa,w));
+  let idxC = []; ctrl.forEach((c,i)=>{ if(c) idxC.push(i); });
+  let modo = 'real';
+  if(!idxC.length){   // modo aproximado (compatibilidad): último saldo cargado = saldo inicial de su semana
+    modo = 'aprox';
+    const aDate = bankAnchorDate(empresa) || isoDateStr(TODAY);
+    let ai = weeks.findIndex(w => aDate>=isoDateStr(w.start) && aDate<=isoDateStr(w.end)); if(ai<0) ai = 0;
+    ctrl[ai] = {saldo:getOpeningBalance(empresa), viejos:[]}; idxC = [ai];
   }
-  for(let i=anchorIdx-1;i>=0;i--){
-    rows[i].saldoFin = rows[i+1].saldoIni;
-    rows[i].saldoIni = rows[i].saldoFin - rows[i].neto;
+  const first = idxC[0];
+  for(let i=first;i<n;i++){
+    const r = rows[i];
+    if(ctrl[i]){ r.saldoIni = ctrl[i].saldo; r.ctrl = true; } else r.saldoIni = rows[i-1].saldoFin;
+    r.saldoFin = r.saldoIni + r.neto;
+    if(i+1<n && ctrl[i+1]){ r.ajuste = ctrl[i+1].saldo - r.saldoFin; r.saldoFin = ctrl[i+1].saldo; }
   }
-  rows.anchorIdx = anchorIdx;
-  rows.anchorDate = aDate;
+  for(let i=first-1;i>=0;i--){ rows[i].saldoFin = rows[i+1].saldoIni; rows[i].saldoIni = rows[i].saldoFin - rows[i].neto; }
+  const lastC = idxC[idxC.length-1], latest = bankAnchorDate(empresa);
+  rows.anchorIdx = first; rows.modo = modo;
+  rows.aperturas = idxC.map(i=>weeks[i].key); rows.ultimaApertura = weeks[lastC].key;
+  rows.viejos = (ctrl[lastC]&&ctrl[lastC].viejos)||[];
+  rows.anchorDate = latest || isoDateStr(TODAY);
+  rows.sinUsar = (modo==='real' && latest && latest > isoDateStr(weeks[lastC].start))? latest : null;   // saldo más reciente que no cae en el inicio de una semana
   return rows;
 }
-// Texto de aviso sobre la antigüedad del saldo bancario cargado.
+// Texto de aviso sobre la antigüedad y el uso del saldo bancario cargado.
 function balanceNoteHTML(fechaStr){
   const info = isoWeekFromDateString(fechaStr);
   const key = `${info.isoYear}-W${String(info.week).padStart(2,'0')}`;
   const f = fmtDateShort(new Date(fechaStr+'T00:00:00Z'));
   if(key < CURRENT_WEEK_KEY) return `<span style="color:var(--amber);font-weight:700;">⚠ Saldo bancario cargado al ${f} (S${info.week}): anterior a la semana actual. Cargue el saldo actual en "Disponibilidad Inicial".</span>`;
   return `Saldo bancario cargado al ${f}.`;
+}
+// Nota completa para los indicadores: apertura real usada y avisos.
+function notaSaldosHTML(seriesList){
+  const arr = seriesList, out = [];
+  const wkl = k=>'S'+k.slice(6);
+  arr.forEach(s=>{
+    const lbl = arr.length>1? (s.__e? s.__e+': ' : '') : '';
+    if(s.modo==='aprox') out.push(`<span style="color:var(--amber);font-weight:700;">⚠ ${lbl}ningún saldo bancario cae en el inicio de una semana (viernes a lunes): se usó el último saldo cargado (${fmtDateShort(new Date(s.anchorDate+'T00:00:00Z'))}) como saldo inicial de su semana — aproximado.</span>`);
+    else {
+      if(s.ultimaApertura < CURRENT_WEEK_KEY) out.push(`<span style="color:var(--amber);font-weight:700;">⚠ ${lbl}la última apertura real es de ${wkl(s.ultimaApertura)}: el saldo de la semana actual es proyectado, no real. Cargue el saldo del inicio de esta semana.</span>`);
+      if(s.sinUsar) out.push(`${lbl}hay un saldo del ${fmtDateShort(new Date(s.sinUsar+'T00:00:00Z'))} que no corresponde al inicio de una semana (no se usa como saldo inicial).`);
+      if(s.viejos && s.viejos.length) out.push(`<span style="color:var(--amber);">${lbl}bancos con saldo de más de 14 días en la última apertura: ${s.viejos.join(', ')}.</span>`);
+    }
+  });
+  return (out.length? out.join('<br>') : 'Saldo inicial = saldo bancario real del primer día de la semana.');
 }
 
 /* ================= PROYECCIÓN Y CONSOLIDADO: composición por concepto + semanas cerradas ================= */
@@ -1920,6 +1957,7 @@ function renderProyEmpresa(){
       children:()=>(CONCEPTS[emp][d.key]||[]).map(c=>({key:'c:'+c, label:signTag(d.key,c)+c, cls:'', kind:'flow',
         val:i=>tesSign(d.key,c)*(valueForWeek(emp,d.key,c,weeks[i].key)||0), real:i=>conceptRealTip(emps,d.key,c,weeks[i])}))})),
     {key:'net', label:'TOTAL NETO SEMANAL', cls:'subtotal-row', kind:'flow', val:i=>series[i].neto},
+    ...(series.some(x=>Math.abs(x.ajuste)>0.005)? [{key:'adj', label:'Diferencia vs. saldo bancario real (apertura siguiente)', cls:'', kind:'flow', val:i=>series[i].ajuste}] : []),
     {key:'sf', label:'SALDO FINAL', cls:'total-row', kind:'last', val:i=>series[i].saldoFin},
     {key:'tc', label:'Tasa BCV promedio semana', cls:'', kind:'rate', val:i=>series[i].rate},
   ];
@@ -1931,7 +1969,7 @@ function renderProyEmpresa(){
   kpiHtml(document.getElementById('kpiEmpresa'), [
     [`Saldo inicial ${W} (semana actual)`, cv(cs.saldoIni,cs), cur],
     [`Flujo neto ${W} (cobros − pagos de la semana)`, cv(cs.neto,cs), cur],
-    [`Saldo final ${W} (semana actual)`, cv(cs.saldoFin,cs), cur]], balanceNoteHTML(series.anchorDate)+' Los saldos de la semana actual no incluyen el acumulado de semanas futuras.');
+    [`Saldo final ${W} (semana actual)`, cv(cs.saldoFin,cs), cur]], notaSaldosHTML([series]));
 }
 
 function renderConsolidado(){
@@ -1951,6 +1989,7 @@ function renderConsolidado(){
         return {key:'c:'+normConcept(c), label:signTag(d.key,c)+c, cls:'', kind:'flow', val:i=>have.reduce((a,e)=>a+one(e)(i),0), real:i=>conceptRealTip(emps,d.key,c,weeks[i]),
           children: have.length>1? ()=>have.map(e=>({key:'e:'+e, label:EMPRESA_NOMBRE[e]||e, cls:'', kind:'flow', val:one(e), real:i=>isClosed(e,d.key,weeks[i].key)?'Real (semana cerrada)':null})) : null}; })})),
     {key:'net', label:'TOTAL NETO SEMANAL', cls:'subtotal-row', kind:'flow', val:i=>emps.reduce((a,e)=>a+all[e][i].neto,0), children:porEmp({kind:'flow', get:s=>s.neto})},
+    ...(emps.some(e=>all[e].some(x=>Math.abs(x.ajuste)>0.005))? [{key:'adj', label:'Diferencia vs. saldo bancario real (apertura siguiente)', cls:'', kind:'flow', val:i=>emps.reduce((a,e)=>a+all[e][i].ajuste,0), children:porEmp({kind:'flow', get:s=>s.ajuste})}] : []),
     {key:'sf', label:'SALDO FINAL (4 empresas)', cls:'total-row', kind:'last', val:i=>emps.reduce((a,e)=>a+all[e][i].saldoFin,0), children:porEmp({kind:'last', get:s=>s.saldoFin})},
     {key:'tc', label:'Tasa BCV promedio semana', cls:'', kind:'rate', val:i=>rates[i]},
   ];
@@ -1960,11 +1999,10 @@ function renderConsolidado(){
   const ci = Math.max(0, weeks.findIndex(w=>w.key===CURRENT_WEEK_KEY));
   const cv=(v)=> cur==='bs'? v : (rates[ci]? v/rates[ci] : null), W=`S${weeks[ci].week}`;
   const si = emps.reduce((a,e)=>a+all[e][ci].saldoIni,0), nt = emps.reduce((a,e)=>a+all[e][ci].neto,0), sf = emps.reduce((a,e)=>a+all[e][ci].saldoFin,0);
-  const oldest = emps.map(e=>all[e].anchorDate).sort()[0];
   kpiHtml(document.getElementById('kpiConsolidado'), [
     [`Saldo inicial ${W} (semana actual, 4 empresas)`, cv(si), cur],
     [`Flujo neto ${W} (cobros − pagos de la semana)`, cv(nt), cur],
-    [`Saldo final ${W} (semana actual, 4 empresas)`, cv(sf), cur]], balanceNoteHTML(oldest).replace('Saldo bancario cargado','Saldo bancario más antiguo cargado')+' Los saldos de la semana actual no incluyen el acumulado de semanas futuras.');
+    [`Saldo final ${W} (semana actual, 4 empresas)`, cv(sf), cur]], notaSaldosHTML(emps.map(e=>Object.assign(all[e],{__e:e}))));
 }
 
 /* ================= CONSOLIDADO ================= */
@@ -2445,7 +2483,7 @@ function seriesFor(scope, weeks){
   return weeks.map((w,i)=>{
     const sec = {}; DEPTS.forEach(d=> sec[d.key] = all.reduce((a,s)=>a+s[i].sectionTotals[d.key],0));
     const x = {week:w, sectionTotals:sec, rate:getEffectiveRate(w.key)};
-    x.neto = all.reduce((a,s)=>a+s[i].neto,0); x.saldoIni = all.reduce((a,s)=>a+s[i].saldoIni,0); x.saldoFin = all.reduce((a,s)=>a+s[i].saldoFin,0);
+    x.neto = all.reduce((a,s)=>a+s[i].neto,0); x.saldoIni = all.reduce((a,s)=>a+s[i].saldoIni,0); x.saldoFin = all.reduce((a,s)=>a+s[i].saldoFin,0); x.ajuste = all.reduce((a,s)=>a+s[i].ajuste,0);
     return x;
   });
 }
@@ -2694,9 +2732,9 @@ async function buildFlujoWorkbook(opts){
     weeklyHeader(ws, `FLUJO DE CAJA SEMANAL PROYECTADO — ${emp}`, 'Bs');
     let r = 8; L.ini = r++;
     EXP_ORDER.forEach(dk=>{ L.sec[dk] = r++; const cs = CONCEPTS[emp][dk]||[]; L.conc[dk] = [r, r+cs.length-1]; r += cs.length; });
-    L.neto = r++; L.fin = r++; r++; L.netoU = r++; L.finU = r++;
+    L.neto = r++; L.adj = r++; L.fin = r++; r++; L.netoU = r++; L.finU = r++;
     LAY[emp] = L;
-    ws.getCell(L.ini,1).value = 'SALDO INICIAL (Bs)'; ws.getCell(L.neto,1).value = 'NETO SEMANAL (Bs)'; ws.getCell(L.fin,1).value = 'SALDO FINAL (Bs)';
+    ws.getCell(L.ini,1).value = 'SALDO INICIAL (Bs)'; ws.getCell(L.neto,1).value = 'NETO SEMANAL (Bs)'; ws.getCell(L.fin,1).value = 'SALDO FINAL (Bs)'; ws.getCell(L.adj,1).value = 'Diferencia vs. saldo bancario real de la semana siguiente (Bs)'; ws.getCell(L.adj,1).font = {italic:true, size:9, color:{argb:GREYTXT}};
     ws.getCell(L.netoU,1).value = 'NETO SEMANAL (US$)'; ws.getCell(L.finU,1).value = 'SALDO FINAL (US$)';
     EXP_ORDER.forEach(dk=>{
       ws.getCell(L.sec[dk],1).value = EXP_LABEL[dk];
@@ -2711,28 +2749,32 @@ async function buildFlujoWorkbook(opts){
         ws.getCell(L.sec[dk], i+2).value = b>=a? F(dk==='TESORERIA'? (CONCEPTS[emp][dk]||[]).map((c,k)=>(tesSign(dk,c)>0?'+':'-')+l+(a+k)).join('').replace(/^\+/,'') : `SUM(${l}${a}:${l}${b})`, x.sectionTotals[dk]) : 0;
       });
       ws.getCell(L.neto, i+2).value = F('='.slice(1)+netoTerms.replace(/@(\d+)/g, l+'$1'), x.neto);
-      if(i===s.anchorIdx){ const c = ws.getCell(L.ini, i+2); c.value = x.saldoIni; c.font = {bold:true, color:{argb:BLUEIN}};
-        c.note = `Saldo bancario cargado en "Disponibilidad Inicial" (${s.anchorDate}). Es el único valor ingresado: el resto de saldos se calcula.`; }
-      if(i>=s.anchorIdx){ if(i>s.anchorIdx) ws.getCell(L.ini, i+2).value = F(`${prev}${L.fin}`, x.saldoIni); ws.getCell(L.fin, i+2).value = F(`${l}${L.ini}+${l}${L.neto}`, x.saldoFin); }
-      else { ws.getCell(L.fin, i+2).value = F(`${next}${L.ini}`, x.saldoFin); ws.getCell(L.ini, i+2).value = F(`${l}${L.fin}-${l}${L.neto}`, x.saldoIni); }
+      if(x.ctrl){ const c = ws.getCell(L.ini, i+2); c.value = x.saldoIni; c.font = {bold:true, color:{argb:BLUEIN}};
+        c.note = `Saldo bancario real del primer día de la semana (cargado en "Disponibilidad Inicial"/Saldos bancarios). Es un dato ingresado; los demás saldos se calculan.`; }
+      if(i>=s.anchorIdx){
+        if(!x.ctrl) ws.getCell(L.ini, i+2).value = F(`${prev}${L.fin}`, x.saldoIni);
+        const nextCtrl = i+1<n && s[i+1].ctrl;
+        ws.getCell(L.adj, i+2).value = nextCtrl? F(`${next}${L.ini}-(${l}${L.ini}+${l}${L.neto})`, x.ajuste) : 0;
+        ws.getCell(L.fin, i+2).value = F(`${l}${L.ini}+${l}${L.neto}+${l}${L.adj}`, x.saldoFin); }
+      else { ws.getCell(L.adj, i+2).value = 0; ws.getCell(L.fin, i+2).value = F(`${next}${L.ini}`, x.saldoFin); ws.getCell(L.ini, i+2).value = F(`${l}${L.fin}-${l}${L.neto}`, x.saldoIni); }
       ws.getCell(L.netoU, i+2).value = F(`IF(OR(${l}$7="",${l}$7=0),"",${l}${L.neto}/${l}$7)`, rate? x.neto/rate : '');
       ws.getCell(L.finU, i+2).value = F(`IF(OR(${l}$7="",${l}$7=0),"",${l}${L.fin}/${l}$7)`, rate? x.saldoFin/rate : '');
     });
     [L.ini, L.fin, L.finU].forEach(rr=>styleRow(ws, rr, {fill:NAVYSOFT, bold:true, color:NAVY}));
-    styleRow(ws, L.neto, {bold:true, top:true}); styleRow(ws, L.netoU, {bold:true});
+    styleRow(ws, L.neto, {bold:true, top:true}); styleRow(ws, L.netoU, {bold:true}); styleRow(ws, L.adj, {});
     EXP_ORDER.forEach(dk=>{ styleRow(ws, L.sec[dk], {fill:'FFF3F5F8', bold:true}); const [a,b]=L.conc[dk]; for(let rr=a; rr<=b; rr++) for(let c=2;c<=n+1;c++) ws.getCell(rr,c).numFmt = FMT_BS; });
     ws.getCell(L.ini,1).font = ws.getCell(L.fin,1).font = ws.getCell(L.finU,1).font = {bold:true, color:{argb:NAVY}};
     negFill(ws, `B${L.ini}:${lastCol}${L.fin}`); negFill(ws, `B${L.finU}:${lastCol}${L.finU}`);
     ws.getCell(L.finU+2,1).value = 'Azul = dato ingresado/importado · Negro = fórmula. Cambie un monto de detalle y todos los saldos se recalculan.';
     ws.getCell(L.finU+2,1).font = {italic:true, size:9, color:{argb:GREYTXT}};
-    ws.getCell(L.finU+3,1).value = 'Convención: el saldo bancario es el saldo inicial de la semana que contiene su fecha; las semanas vencidas se reconstruyen hacia atrás.';
+    ws.getCell(L.finU+3,1).value = 'Convención: el saldo inicial de cada semana es el saldo bancario real de su primer día (cargado entre el viernes anterior y el lunes); si no existe, se arrastra el saldo final de la semana anterior. La diferencia contra la apertura real siguiente se muestra en su fila.';
     ws.getCell(L.finU+3,1).font = {italic:true, size:9, color:{argb:GREYTXT}};
   });
 
   // ---------- consolidado Bs ----------
-  const C = {sec:{}}; { let r = 8; C.ini = r++; EXP_ORDER.forEach(dk=>C.sec[dk] = r++); C.neto = r++; C.fin = r++; r++; C.ctl = r++; }
+  const C = {sec:{}}; { let r = 8; C.ini = r++; EXP_ORDER.forEach(dk=>C.sec[dk] = r++); C.neto = r++; C.adj = r++; C.fin = r++; r++; C.ctl = r++; }
   weeklyHeader(wsCB, 'FLUJO DE CAJA SEMANAL PROYECTADO — CONSOLIDADO (CP + WF + TB + SV)', 'Bs');
-  wsCB.getCell(C.ini,1).value = 'SALDO INICIAL (Bs)'; wsCB.getCell(C.neto,1).value = 'NETO SEMANAL (Bs)'; wsCB.getCell(C.fin,1).value = 'SALDO FINAL (Bs)';
+  wsCB.getCell(C.ini,1).value = 'SALDO INICIAL (Bs)'; wsCB.getCell(C.neto,1).value = 'NETO SEMANAL (Bs)'; wsCB.getCell(C.fin,1).value = 'SALDO FINAL (Bs)'; wsCB.getCell(C.adj,1).value = 'Diferencia vs. saldo bancario real de la semana siguiente (Bs)'; wsCB.getCell(C.adj,1).font = {italic:true, size:9, color:{argb:GREYTXT}};
   wsCB.getCell(C.ctl,1).value = 'Control de cuadre vs. suma de empresas (debe ser 0)';
   EXP_ORDER.forEach(dk=>wsCB.getCell(C.sec[dk],1).value = EXP_LABEL[dk]);
   const sumE = (row, l)=> EMPRESAS.map(e=>`'${e}'!${l}${row(LAY[e])}`).join('+');
@@ -2742,7 +2784,8 @@ async function buildFlujoWorkbook(opts){
     wsCB.getCell(C.ini, i+2).value = F(sumE(L=>L.ini, l), x.saldoIni);
     EXP_ORDER.forEach(dk=> wsCB.getCell(C.sec[dk], i+2).value = F(sumE(L=>L.sec[dk], l), x.sectionTotals[dk]));
     wsCB.getCell(C.neto, i+2).value = F(consNetoTerms.replace(/@(\d+)/g, l+'$1'), x.neto);
-    wsCB.getCell(C.fin, i+2).value = F(`${l}${C.ini}+${l}${C.neto}`, x.saldoFin);
+    wsCB.getCell(C.adj, i+2).value = F(sumE(L=>L.adj, l), cons[i].ajuste||0);
+    wsCB.getCell(C.fin, i+2).value = F(`${l}${C.ini}+${l}${C.neto}+${l}${C.adj}`, x.saldoFin);
     wsCB.getCell(C.ctl, i+2).value = F(`ROUND(${l}${C.fin}-(${sumE(L=>L.fin, l)}),2)`, 0);
   });
   [C.ini, C.fin].forEach(rr=>styleRow(wsCB, rr, {fill:NAVYSOFT, bold:true, color:NAVY}));
@@ -3194,14 +3237,14 @@ function applySaldosWorkbook(wb){
 async function buildSaldosTemplateBuffer(){
   await loadScriptOnce(EXCELJS_URL);
   const wb = new ExcelJS.Workbook(), NAVY='FF1F3A5C', GREYTXT='FF6B7280', BLUEIN='FF1F4FD8', INFILL='FFFFF9E5';
-  const [ty,tm,td] = isoDateStr(TODAY).split('-').map(Number), hoyDate = new Date(Date.UTC(ty,tm-1,td));
+  const lunes = isoDateStr(CURRENT_WEEK_START_FN()), [ty,tm,td] = lunes.split('-').map(Number), hoyDate = new Date(Date.UTC(ty,tm-1,td));
   const thin = {style:'thin', color:{argb:'FFD0D5DD'}}, box = {top:thin,left:thin,bottom:thin,right:thin};
   EMPRESAS.forEach(emp=>{
     const ws = wb.addWorksheet(emp, {properties:{tabColor:{argb:NAVY}}});
     ws.getCell('A1').value = 'FC_SALDOS'; ws.getCell('B1').value = `Generada el ${isoDateStr(TODAY)} · semana ${CURRENT_WEEK_KEY}`;
     ws.getCell('A1').font = ws.getCell('B1').font = {size:8, color:{argb:GREYTXT}};
     ws.getCell('A2').value = `PLANTILLA DE SALDOS BANCARIOS — EMPRESA ${nomEmp(emp)}`; ws.getCell('A2').font = {bold:true, size:13, color:{argb:NAVY}};
-    ws.getCell('A3').value = 'Escriba el saldo de cada banco al cierre del día indicado en "Fecha", en Bs, solo números (negativo si hay sobregiro). Banco sin saldo escrito = no se carga (conserva el anterior; NO se toma como 0). Para otras fechas use las filas de abajo y elija el banco en la lista. No cambie los nombres ni la fila oculta 4.';
+    ws.getCell('A3').value = 'IMPORTANTE: el flujo usa como saldo inicial de cada semana el saldo bancario de su PRIMER DÍA. Escriba el saldo con que abre el lunes (cierre del viernes/sábado/domingo) y deje la fecha del lunes; un saldo con fecha a mitad de semana no se usa como saldo inicial. Montos en Bs, solo números (negativo si hay sobregiro). Banco sin saldo escrito = no se carga (conserva el anterior; NO se toma como 0). Para otras semanas (o para cargar saldos anteriores) use las filas de abajo y elija el banco en la lista. No cambie los nombres ni la fila oculta 4.';
     ws.getCell('A3').font = {italic:true, size:9, color:{argb:GREYTXT}}; ws.getCell('A3').alignment = {wrapText:true, vertical:'top'}; ws.mergeCells('A3:E3'); ws.getRow(3).height = 40;
     ws.getRow(4).getCell(1).value = 'clave_saldos'; ws.getRow(4).hidden = true;
     ['Banco','Fecha del saldo (dd/mm/aaaa)','Saldo (Bs)','Último saldo cargado (referencia)','Fecha del último (referencia)'].forEach((t,i)=>{
@@ -3233,13 +3276,15 @@ function setSaldosMode(on){
   hide.forEach(x=>{ if(x) x.style.display = on? 'none' : ''; });
   const el = document.getElementById('saldosCaptura'); if(el) el.style.display = on? '' : 'none';
 }
+function CURRENT_WEEK_START_FN(){ return generateWeeks(1,0)[0].start; }
 function renderSaldosCaptura(){
   const el = document.getElementById('saldosCaptura'); if(!el) return;
-  let h = `<p class="hint"><b>Proceso:</b> 1) descargue la <b>plantilla de saldos</b> (botón de arriba); 2) Tesorería escribe el saldo de cada banco al cierre del día, por empresa, y la deja en "Capturas por área"; 3) pulse <b>Importar todo desde Drive</b> (o importe el archivo). Cada saldo queda en el historial con su fecha; el saldo inicial de la proyección usa el más reciente de cada banco. Un banco sin saldo escrito conserva el anterior (no se toma como 0). También puede cargarlos uno a uno en <i>Disponibilidad Inicial</i>.</p><div class="grid2">`;
+  let h = `<p class="hint"><b>Regla clave:</b> el saldo inicial de cada semana es el saldo bancario real de su <b>primer día</b> (se aceptan saldos con fecha del viernes anterior al lunes). Una semana sin ese saldo arrastra el final de la anterior, y cuando carga el saldo real de la semana siguiente, la diferencia queda visible en la Proyección. <b>Proceso:</b> 1) descargue la <b>plantilla de saldos</b> (botón de arriba); 2) Tesorería escribe el saldo de cada banco al cierre del día, por empresa, y la deja en "Capturas por área"; 3) pulse <b>Importar todo desde Drive</b> (o importe el archivo). Cada saldo queda en el historial con su fecha; el saldo inicial de la proyección usa el más reciente de cada banco. Un banco sin saldo escrito conserva el anterior (no se toma como 0). También puede cargarlos uno a uno en <i>Disponibilidad Inicial</i>.</p><div class="grid2">`;
   EMPRESAS.forEach(e=>{
     const fr = saldoFrescura(e);
     const chip = !fr? '<span style="color:var(--danger);font-weight:700;">▲ sin saldos</span>' : (fr.dias>7? `<span style="color:var(--danger);font-weight:700;">▲ último saldo hace ${fr.dias} días</span>` : `<span style="color:var(--accent);font-weight:700;">✓ al día (${fmtFechaIso(fr.fecha)})</span>`);
-    h += `<div class="viz-card"><h3 class="viz-h">${nomEmp(e)} &nbsp; ${chip}</h3><table class="grid"><thead><tr><th style="text-align:left;">Banco</th><th>Último saldo (Bs)</th><th>Fecha</th><th>Antigüedad</th><th>Registros</th></tr></thead><tbody>`;
+    const sr = computeCompanySeries(e, generateWeeks(82,12)), apert = sr.modo==='real'? sr.aperturas.map(k=>'S'+k.slice(6)).join(', ') : 'ninguna (modo aproximado)';
+    h += `<div class="viz-card"><h3 class="viz-h">${nomEmp(e)} &nbsp; ${chip}</h3><div style="font-size:11.5px;color:var(--text-mute);margin-bottom:6px;">Semanas con saldo inicial real: <b>${apert}</b></div><table class="grid"><thead><tr><th style="text-align:left;">Banco</th><th>Último saldo (Bs)</th><th>Fecha</th><th>Antigüedad</th><th>Registros</th></tr></thead><tbody>`;
     BANK_LIST.forEach(b=>{
       const l = getLatestBankBalance(e,b), n = Object.keys(((bankHistory[e]||{})[b])||{}).length, d = l.fecha? diasEntre(l.fecha, isoDateStr(TODAY)) : null;
       h += `<tr><td style="text-align:left;">${b}</td><td style="text-align:right;">${l.fecha? fmtBs(l.saldo) : '—'}</td><td>${fmtFechaIso(l.fecha)}</td><td style="${d!==null && d>7? 'color:var(--danger);font-weight:700;' : ''}">${d===null? '—' : d+' d'}</td><td>${n}</td></tr>`;
